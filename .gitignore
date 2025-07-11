@@ -1,3 +1,4 @@
+*.swp
 build/*
 sstar.egg-info/*
 dist/*
