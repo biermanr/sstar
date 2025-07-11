@@ -29,7 +29,7 @@ from scipy.stats import norm, nbinom
 def cal_match_pct(vcf, ref_ind_file, tgt_ind_file, src_ind_file, anc_allele_file, output, thread, score_file, mapped_region_file):
     """
     Description:
-        Calculate p-values for S* haplotypes in the target population with source genomes.
+        Calculate matchrates for S* haplotypes in the target population with source genomes.
 
     Arguments:
         vcf str: Name of the VCF file containing genotypes.
@@ -191,6 +191,7 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
     Returns:
         res list: List containing estimated p-values and other statistics.
     """
+    print(data)
     res = []
     for line in data:
         elements = line.split("\t")
@@ -221,7 +222,7 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
 ########################################################
 # TEMPORARILY ADDING archaic matchrate simulation code #
 ########################################################
-def get_null_matchrates(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
+def get_null_matchrates(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
     """
     Description:
         Calculates quantiles of expected S*.
@@ -232,8 +233,8 @@ def get_null_matchrates(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tg
         N0 int: N0 used in ms simulation.
         nsamp int: Sample size (haploid) used in ms simulation.
         nreps int: Number of replicates used in ms simulation.
-        ref_index int: Index of the reference population in the demographic model (start from 1).
-        ref_size int: Sample size (haploid) of the reference population.
+        anc_index int: Index of the ancestral population in the demographic model (start from 1).
+        anc_size int: Sample size (haploid) of the ancestral population.
         tgt_index int: Index of the target population in the demographic model (start from 1).
         tgt_size int: Sample size (haploid) of the target population.
         mut_rate float: Mutation rate.
@@ -248,7 +249,7 @@ def get_null_matchrates(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tg
     output_dir = os.path.abspath(output_dir)
     if os.path.exists(output_dir) is False: subprocess.call(['mkdir', output_dir])
     _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir)
-    _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds)
+    _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds)
     #_summary(output_dir, rec_rate)
 
 def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir):
@@ -278,7 +279,7 @@ def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output
             rec_rate = rec_rate_list[i]
             o.write(f'{mut_rate}\t{rec_rate}\n')
 
-def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds):
+def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds):
     """
     Description
         Helper function for running ms simulation.
@@ -289,8 +290,8 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt
         N0 int: N0 used in ms simulation.
         nsamp int: Sample size (haploid) used in ms simulation.
         nreps int: Number of replicates used in ms simulation.
-        ref_index int: Index of the reference population in the demographic model (start from 1).
-        ref_size int: Sample size (haploid) of the reference population.
+        anc_index int: Index of the ancestral population in the demographic model (start from 1).
+        anc_size int: Sample size (haploid) of the ancestral population.
         tgt_index int: Index of the target population in the demographic model (start from 1).
         tgt_size int: Sample size (haploid) of the target population.
         seq_len int: Length of simulated sequence.
@@ -301,34 +302,34 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt
     """
     graph = demes.load(model)
     samples = np.zeros(len(graph.demes))
-    samples[ref_index-1] = ref_size
+    samples[anc_index-1] = anc_size
     samples[tgt_index-1] = tgt_size
     ms_params = demes.to_ms(graph, N0=N0, samples=samples)
     snp_num_list = np.arange(snp_num_range[0], snp_num_range[1]+snp_num_range[2], snp_num_range[2])
     
     ms_exec = os.path.abspath(ms_dir) + '/ms'
     rates = f'{output_dir}/rates.combination'
-    ref_list = f'{output_dir}/sim.ref.list'
+    anc_list = f'{output_dir}/sim.anc.list'
     tgt_list = f'{output_dir}/sim.tgt.list'
-    ref_size = int(ref_size / 2)
+    anc_size = int(anc_size / 2)
     tgt_size = int(tgt_size / 2)
 
-    if ref_index == tgt_index: raise Exception('The reference population should be different from the target population.')
-    elif ref_index < tgt_index:
-        with open(ref_list, 'w') as o:
-            for i in range(ref_size):
+    if anc_index == tgt_index: raise Exception('The ancestral population should be different from the target population.')
+    elif anc_index < tgt_index:
+        with open(anc_list, 'w') as o:
+            for i in range(anc_size):
                 o.write(f'ms_{i}\n')
         with open(tgt_list, 'w') as o:
             for i in range(tgt_size):
-                o.write(f'ms_{i+ref_size}\n')
+                o.write(f'ms_{i+anc_size}\n')
     else:
-        with open(ref_list, 'w') as o:
-            for i in range(ref_size):
+        with open(anc_list, 'w') as o:
+            for i in range(anc_size):
                 o.write(f'ms_{i+tgt_size}\n')
         with open(tgt_list, 'w') as o:
             for i in range(tgt_size):
                 o.write(f'ms_{i}\n')
-       
+
     try:
         from pytest_cov.embed import cleanup_on_sigterm
     except ImportError:
@@ -337,7 +338,7 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt
         cleanup_on_sigterm()
 
     in_queue, out_queue = Queue(), Queue()
-    workers = [Process(target=_run_ms_simulation_worker, args=(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, ref_list, tgt_list, seeds)) for ii in range(thread)]
+    workers = [Process(target=_run_ms_simulation_worker, args=(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, anc_list, tgt_list, seeds)) for ii in range(thread)]
  
     for snp_num in snp_num_list:
         in_queue.put(snp_num)
@@ -353,7 +354,7 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt
         for worker in workers:
             worker.join()
 
-def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, ref_list, tgt_list, seeds):
+def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, anc_list, tgt_list, seeds):
     """
     Description:
         Worker function for running ms simulation.
@@ -368,7 +369,7 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
         nreps int: Number of replicates used in ms simulation.
         seq_len int: Length of the simulated sequeuence.
         ms_params list: List of ms parameters.
-        ref_list str: Name of the file containing individuals from the reference population.
+        anc_list str: Name of the file containing individuals from the ancestral population.
         tgt_list str: Name of the file containing individuals from the target population.
         seeds list: Three random seed numbers used in ms simulation.
     """
@@ -377,8 +378,6 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
         output_subdir = f'{output_dir}/{snp_num}'
         output_ms = f'{output_subdir}/sim.ms'
         output_vcf = f'{output_subdir}/sim.vcf'
-        output_score = f'{output_subdir}/sim.score'
-        output_quantile = f'{output_subdir}/sim.quantile'
         ms_script = f'{output_subdir}/run_ms.sh'
 
         if seeds is not None:
@@ -391,7 +390,10 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
         _ms2vcf(output_ms, output_vcf, nsamp, seq_len)
-        #subprocess.call(['sstar', 'score', '--vcf', output_vcf, '--ref', ref_list, '--tgt', tgt_list, '--output', output_score, '--win-len', str(seq_len), '--win-step', str(seq_len), '--thread', '1'])
+
+        # Calculate archaic match rates from the VCF file
+        # using the known ancestral and target names from the anc_list and tgt_list files.
+        # TODO
         out_queue.put('Finished')
 
 def _ms2vcf(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
@@ -412,6 +414,7 @@ def _ms2vcf(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
     header += "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n"
     header += "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(['ms_' + str(i) for i in range(int(nsamp/ploidy))])
 
+    # Read ms file and parse the data, each entry in `data` is a different replicate simulation
     with open(ms_file, 'r') as f:
         f.readline()
         f.readline()
@@ -426,9 +429,13 @@ def _ms2vcf(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
             elif l.startswith('0') or l.startswith('1'):
                 data[i]['geno'].append(l.rstrip())
 
+    # Write an output VCF file combining all replicates
+    # by concatentating them, pretending they are from the same chromosome.
+    # Results in a VCF file with number of lines equal to (num_replicates) * (num_snps)
     shift = 0
     with open(vcf_file, 'w') as o:
         o.write(header+"\n")
+
         for i in range(len(data)):
             for j in range(len(data[i]['pos'])):
                 pos = int(seq_len * float(data[i]['pos'][j])) + shift

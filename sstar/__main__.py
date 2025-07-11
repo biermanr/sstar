@@ -33,7 +33,7 @@ def _run_quantile(args):
 
 def _run_null_match_rate(args):
     from sstar.cal_match_rate import get_null_matchrates
-    get_null_matchrates(model=args.model, ms_dir=args.ms_dir, N0=args.N0, nsamp=args.nsamp, nreps=args.nreps, ref_index=args.ref_index, ref_size=args.ref_size, tgt_index=args.tgt_index, tgt_size=args.tgt_size, mut_rate=args.mut_rate, rec_rate=args.rec_rate, seq_len=args.seq_len, snp_num_range=args.snp_num_range, output_dir=args.output_dir, thread=args.thread, seeds=args.seeds)
+    get_null_matchrates(model=args.model, ms_dir=args.ms_dir, N0=args.N0, nsamp=args.nsamp, nreps=args.nreps, anc_index=args.anc_index, anc_size=args.anc_size, tgt_index=args.tgt_index, tgt_size=args.tgt_size, mut_rate=args.mut_rate, rec_rate=args.rec_rate, seq_len=args.seq_len, snp_num_range=args.snp_num_range, output_dir=args.output_dir, thread=args.thread, seeds=args.seeds)
 
 def _run_threshold(args):
     from sstar.cal_threshold import cal_threshold
@@ -137,8 +137,8 @@ def _s_star_cli_parser():
     parser.add_argument('--nsamp', type=int, required=True, help='sample size (haploid) used in ms simulation')
     parser.add_argument('--nreps', type=int, required=True, help='number of replicates used in ms simulation')
     parser.add_argument('--seeds', type=int, nargs=3, default=None, help='three random seed numbers used in ms simulation; default: None')
-    parser.add_argument('--ref-index', type=int, dest='ref_index', required=True, help='index of the reference population in the demographic model (start from 1)')
-    parser.add_argument('--ref-size', type=int, dest='ref_size', required=True, help='sample size (haploid) of the reference population')
+    parser.add_argument('--anc-index', type=int, dest='anc_index', required=True, help='index of the ancestral population in the demographic model (start from 1)')
+    parser.add_argument('--anc-size', type=int, dest='anc_size', required=True, help='sample size (haploid) of the ancestral population')
     parser.add_argument('--tgt-index', type=int, dest='tgt_index', required=True, help='index of the target population in the demographic model (start from 1)')
     parser.add_argument('--tgt-size', type=int, dest='tgt_size', required=True, help='sample size (haploid) of the target population')
     parser.add_argument('--mut-rate', type=float, dest='mut_rate', required=True, help='mutation rate per generation per base')
