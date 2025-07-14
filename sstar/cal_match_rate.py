@@ -15,6 +15,7 @@
 
 import allel
 import gzip
+import itertools
 import os
 import numpy as np
 import pandas as pd
@@ -30,7 +31,6 @@ def cal_match_pct(vcf, ref_ind_file, tgt_ind_file, src_ind_file, anc_allele_file
     """
     Description:
         Calculate matchrates for S* haplotypes in the target population with source genomes.
-
     Arguments:
         vcf str: Name of the VCF file containing genotypes.
         src_vcf str: Name of the VCF file containing genotypes from source populations.
@@ -199,6 +199,7 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
         win_start, win_end = elements[1], elements[2]
         sample = elements[3]
 
+        # RB note: none of these values are used, can be commented out
         s_star_snps = elements[-1].split(",")
         s_start, s_end = s_star_snps[0], s_star_snps[-1]
         key1 = win_start+'-'+win_end
@@ -389,17 +390,68 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
         with open(ms_script, 'w') as o:
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
-        _ms2vcf(output_ms, output_vcf, nsamp, seq_len)
+        #_ms2vcf(output_ms, output_vcf, nsamp, seq_len)
 
         # Calculate archaic match rates from the VCF file
         # using the known ancestral and target names from the anc_list and tgt_list files.
         # TODO
         out_queue.put('Finished')
 
-def _ms2vcf(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
+def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2):
+    """
+    Calculate the match percentage for every combination of target individual
+    against each source individual from each ms simulation replicate.
+
+    Arguments:
+        output_ms str: Name of the ms output file.
+        anc_list str: Name of the file containing individuals from the ancestral population.
+        tgt_list str: Name of the file containing individuals from the target population.
+
+    Returns:
+        null_match_rates list: List containing match percentages
+    """
+    null_match_rates = []
+
+    chr_name = "1" # 
+    mapped_intervals = None
+    win_start = 0
+    win_end = seq_len
+    ref_ind_file = None
+    anc_allele_file = None
+
+    sample_size = nsamp // ploidy
+
+    for i,vcf in enumerate(_ms2vcfs(output_ms, "woosh.vcf", nsamp, seq_len, ploidy)):
+        if i % 100 == 0: print(f"Processing replicate {i+1}...")
+
+        _, _, tgt_data, tgt_samples, src_data, src_samples = read_data(vcf, ref_ind_file, tgt_list, anc_list, anc_allele_file)
+
+        num_tgt_samples = len(tgt_samples)
+        num_src_samples = len(src_samples)
+
+        # Calculate match percentages for each combination of target and source individuals
+        for tgt_ind_index, src_ind_index in itertools.product(range(num_tgt_samples), range(num_src_samples)):
+
+            hap1_res = cal_matchpct(chr_name, mapped_intervals, tgt_data, src_data, tgt_ind_index, src_ind_index, 0, int(win_start), int(win_end), sample_size)
+            hap2_res = cal_matchpct(chr_name, mapped_intervals, tgt_data, src_data, tgt_ind_index, src_ind_index, 1, int(win_start), int(win_end), sample_size)
+
+            hap1_match_pct = hap1_res[-1]
+            hap2_match_pct = hap2_res[-1]
+            hap_match_pct = 'NA'
+
+            if (hap1_match_pct != 'NA') and (hap2_match_pct != 'NA'): hap_match_pct = (hap1_match_pct + hap2_match_pct) / 2
+           
+            null_match_rates.append(hap_match_pct)
+
+    return null_match_rates
+
+
+
+
+def _ms2vcfs(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
     """
     Description:
-        Converts ms output files into the VCF format.
+        Converts ms output file into multiple VCF files, one for each ms replicate.
 
     Arguments:
         ms_file str: Name of the ms file (input).
@@ -408,38 +460,40 @@ def _ms2vcf(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
         seq_len int: Sequence length.
         ploidy int: Ploidy of each individual.
     """
-    data = []
-    i = -1
     header = "##fileformat=VCFv4.2\n"
     header += "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n"
     header += "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(['ms_' + str(i) for i in range(int(nsamp/ploidy))])
 
-    # Read ms file and parse the data, each entry in `data` is a different replicate simulation
+    data = {}
+
+    def _data_to_vcf(vcf_file, data):
+        with open(vcf_file, 'w') as o:
+            o.write(header+"\n")
+        
+            for j in range(len(data['pos'])):
+                pos = int(seq_len * float(data['pos'][j]))
+                genotypes = "".join([data['geno'][k][j] for k in range(len(data['geno']))])
+                genotypes = "\t".join([a+'|'+b for a,b in zip(genotypes[0::ploidy],genotypes[1::ploidy])])
+                o.write(f"1\t{pos}\t.\tA\tT\t100\tPASS\t.\tGT\t{genotypes}\n")
+
+        return vcf_file
+
+
     with open(ms_file, 'r') as f:
         f.readline()
         f.readline()
         for l in f.readlines():
             if l.startswith('//'):
-                i += 1
-                data.append({})
-                data[i]['pos'] = []
-                data[i]['geno'] = []
+                if data:
+                    yield _data_to_vcf(vcf_file, data)
+
+                data = {}
+                data['pos'] = []
+                data['geno'] = []
             elif l.startswith('positions'):
-                data[i]['pos'] = l.rstrip().split(" ")[1:]
+                data['pos'] = l.rstrip().split(" ")[1:]
             elif l.startswith('0') or l.startswith('1'):
-                data[i]['geno'].append(l.rstrip())
+                data['geno'].append(l.rstrip())
 
-    # Write an output VCF file combining all replicates
-    # by concatentating them, pretending they are from the same chromosome.
-    # Results in a VCF file with number of lines equal to (num_replicates) * (num_snps)
-    shift = 0
-    with open(vcf_file, 'w') as o:
-        o.write(header+"\n")
-
-        for i in range(len(data)):
-            for j in range(len(data[i]['pos'])):
-                pos = int(seq_len * float(data[i]['pos'][j])) + shift
-                genotypes = "".join([data[i]['geno'][k][j] for k in range(len(data[i]['geno']))])
-                genotypes = "\t".join([a+'|'+b for a,b in zip(genotypes[0::ploidy],genotypes[1::ploidy])])
-                o.write(f"1\t{pos}\t.\tA\tT\t100\tPASS\t.\tGT\t{genotypes}\n")
-            shift += seq_len
+    if data:
+        yield _data_to_vcf(vcf_file, data)
