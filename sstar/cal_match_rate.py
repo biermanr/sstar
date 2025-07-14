@@ -410,7 +410,7 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
     Returns:
         null_match_rates list: List containing match percentages
     """
-    null_match_rates = []
+    null_match_rates = {}
 
     chr_name = "1" # 
     mapped_intervals = None
@@ -421,8 +421,8 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
 
     sample_size = nsamp // ploidy
 
-    for i,vcf in enumerate(_ms2vcfs(output_ms, "woosh.vcf", nsamp, seq_len, ploidy)):
-        if i % 100 == 0: print(f"Processing replicate {i+1}...")
+    for sim_num,vcf in enumerate(_ms2vcfs(output_ms, "woosh.vcf", nsamp, seq_len, ploidy)):
+        #if sim_num % 100 == 0: print(f"Processing replicate {sim_num+1}...")
 
         _, _, tgt_data, tgt_samples, src_data, src_samples = read_data(vcf, ref_ind_file, tgt_list, anc_list, anc_allele_file)
 
@@ -441,7 +441,8 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
 
             if (hap1_match_pct != 'NA') and (hap2_match_pct != 'NA'): hap_match_pct = (hap1_match_pct + hap2_match_pct) / 2
            
-            null_match_rates.append(hap_match_pct)
+            k = f"SIM-{sim_num}_TGT-{tgt_ind_index}_SRC-{src_ind_index}"
+            null_match_rates[k] = hap_match_pct
 
     return null_match_rates
 
