@@ -392,35 +392,23 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
 
-        # Calculate archaic match rates from the .ms file using an awk script which does the same calculations
-        print("ABOUT TO AWK MATCHRATE")
-        start = time.time()
-        awk_sim_matchrates = awk_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2)
-        print(f"Time taken for awk match rate calculation: {time.time() - start:.2f} seconds")
-
         # Calculate the archaic match rates from the .ms file using the py_cal_match_pct_ind_for_simulation function
         print("ABOUT TO DIRECT PY MATCHRATE")
         start = time.time()
         py_sim_matchrates = py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2)
         print(f"Time taken for direct Python match rate calculation: {time.time() - start:.2f} seconds")
 
-        # Calculate refactored archaic match rates from the .ms file using the refactored py_cal_match_pct_ind_for_simulation function
-        print("ABOUT TO REFACTORED PY MATCHRATE")
-        start = time.time()
-        refpy_sim_matchrates = py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2)
-        print(f"Time taken for refactored Python match rate calculation: {time.time() - start:.2f} seconds")
-
         # Calculate archaic match rates from the .ms file utltimately using Kuhlwilm's utils.cal_matchpct() method
-        print("ABOUT TO PY MATCHRATE")
+        print("ABOUT TO KUHLWILM PY MATCHRATE")
         start = time.time()
-        sim_matchrates = cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2)
+        kuhlwilm_sim_matchrates = cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2)
         print(f"Time taken for Python match rate calculation: {time.time() - start:.2f} seconds")
 
         # Output both the py and awk match rates
         with open(output_ms+".matchrates", 'w') as o:
-            o.write("py_match_rate,awk_match_rate,direct_py_match_rate,refpy_match_rate\n")
-            for py_rate, awk_rate, direct_py_rate, refpy_rate in zip(sim_matchrates, awk_sim_matchrates, py_sim_matchrates, refpy_sim_matchrates):
-                o.write(f"{py_rate},{awk_rate},{direct_py_rate},{refpy_rate}\n")
+            o.write("direct_py_rate, kuhlwilm_py_rate\n")
+            for direct_py_rate, kuhlwilm_py_rate in zip(py_sim_matchrates, kuhlwilm_sim_matchrates):
+                o.write(f"{direct_py_rate},{kuhlwilm_py_rate}\n")
 
         out_queue.put('Finished')
 
@@ -523,241 +511,9 @@ def _ms2vcfs(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
     if data:
         yield _data_to_vcf(vcf_file, data)
 
-
-
-def awk_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2):
-
-    awk_script = """
-    function calc_matchrate(){
-        for(tgt_ind in tgt_inds){
-            for(src_ind in src_inds){
-                # Assumes ploidy = 2 in both tgt and src
-                split(g[src_inds[src_ind]*2+0], src_gt_h1, "");
-                split(g[src_inds[src_ind]*2+1], src_gt_h2, "");
-
-                hap_match_pct = 0;
-                for(ploidy_i = 0; ploidy_i < 2; ++ploidy_i){
-                    hap_site_num = 0;
-                    hap_shared_src_hom_site_num = 0;
-                    hap_shared_src_het_site_num = 0;
-                    split(g[tgt_inds[tgt_ind]*2+ploidy_i], tgt_gt, "");
-
-                    for(snp_i = 1; snp_i <= num_snps; ++snp_i){
-                        if(tgt_gt[snp_i] == "1" || src_gt_h1[snp_i] == "1" || src_gt_h2[snp_i] == "1"){
-                            ++hap_site_num;
-                        }
-                        if(tgt_gt[snp_i] == "1" && (src_gt_h1[snp_i] + src_gt_h2[snp_i] == 2)){
-                            ++hap_shared_src_hom_site_num;
-                        }
-                        if(tgt_gt[snp_i] == "1" && (src_gt_h1[snp_i] + src_gt_h2[snp_i] == 1)){
-                            ++hap_shared_src_het_site_num;
-                        }
-                    }
-
-                    hap_match_src_allele_num = hap_shared_src_hom_site_num + 0.5*hap_shared_src_het_site_num;
-                    if(hap_site_num > 0){
-                        hap_match_pct += 0.5 * (hap_match_src_allele_num / hap_site_num);
-                    } else {
-                        hap_match_pct = "NA";
-                        break;
-                    }
-                }
-
-                if(hap_match_pct != "NA"){
-                    print hap_match_pct;
-                }
-            }
-        }
-    }
-    """
-
-    awk_script += """
-    BEGIN {
-    """
-
-    # Get the index of the target and source individual samples from files
-    # assuming the files are formatted with one individual per line
-    # in the format "ms_0", "ms_1", etc.
-    with open(anc_list) as f:
-        anc_list = [l.strip().split("ms_")[1] for l in f.readlines()]
-
-    with open(tgt_list) as f:
-        tgt_list = [l.strip().split("ms_")[1] for l in f.readlines()]
-
-
-    awk_script += """
-        # Unique per simulation
-        num_samples = {num_samples};
-        num_snps = {snp_num};
-        tgt_ind_str = "{tgt_ind_str}";
-        src_ind_str = "{src_ind_str}";
-    """.format(
-        num_samples=nsamp,
-        snp_num=snp_num,
-        tgt_ind_str=" ".join(str(t) for t in tgt_list),
-        src_ind_str=" ".join(str(s) for s in anc_list),
-    )
-
-    awk_script += """
-        # These are the number of header lines ms always adds
-        num_headers = 3;
-        per_sim_headers = 5;
-
-        # One-time calculations
-        headers = num_headers+per_sim_headers;
-        spacing = num_samples+per_sim_headers;
-
-        split(tgt_ind_str, tgt_inds);
-        split(src_ind_str, src_inds);
-
-        # Sanity checks
-        # - make sure none of the tgt or src individuals are the same
-        # - make sure none of the tgt or src individuals aren't indexed
-        #   higher than possible given the ploidy and nsamp
-        # TODO
-
-        OFS="";
-    }
-    """
-
-    awk_script += """
-    NR < headers {
-        next;
-
-    } (NR-headers)%spacing < num_samples {
-        g[(NR-headers)%spacing] = $1;
-
-    } (NR-headers)%spacing == num_samples {
-        sim_num += 1;
-        calc_matchrate()
-        # Clear g for next simulation replicate
-        delete g
-    } END {
-        calc_matchrate()
-    }
-    """
-
-
-    # Write the awk script
-    awk_script_file = output_ms + ".awk"
-    with open(awk_script_file, 'w') as f:
-        f.write(awk_script)
-
-    # Run the awk script on the ms output file and collect the stdout
-    cmd = f"awk -f {awk_script_file} {output_ms}"
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Error running awk script: {result.stderr}")
-    
-    # Parse the output and convert to a list of floats
-    match_rates = []
-    for line in result.stdout.strip().split('\n'):
-            match_rates.append(float(line.strip()))
-
-    return match_rates
-
 def py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2):
     """
     Calculate match percentages between target and source individuals from ms simulation output.
-    This is a Python equivalent of the awk_cal_match_pct_ind_for_simulation function.
-    
-    Arguments:
-        output_ms str: Name of the ms output file.
-        snp_num int: Number of SNPs in the simulation.
-        nsamp int: Total number of haploid samples.
-        anc_list str: Name of the file containing individuals from the ancestral (source) population.
-        tgt_list str: Name of the file containing individuals from the target population.
-        ploidy int: Ploidy of each individual (default=2).
-        
-    Returns:
-        match_rates list: List of match percentages for each target-source individual combination.
-    """
-    
-    # Read target and source individual indices from files
-    with open(anc_list) as f:
-        src_inds = [int(line.strip().split("ms_")[1]) for line in f.readlines()]
-    
-    with open(tgt_list) as f:
-        tgt_inds = [int(line.strip().split("ms_")[1]) for line in f.readlines()]
-    
-    match_rates = []
-    
-    # Parse ms output file
-    with open(output_ms, 'r') as f:
-        lines = f.readlines()
-    
-    # Skip initial headers (3 lines but 0-indexed)
-    line_idx = 2
-    
-    while line_idx < len(lines):
-        # Skip per-simulation headers (5 lines including positions line)
-        line_idx += 5
-        
-        # Read genotype data for this simulation
-        g = {}
-        for sample_idx in range(nsamp):
-            if line_idx < len(lines):
-                g[sample_idx] = lines[line_idx].strip()
-                line_idx += 1
-        
-        # Calculate match rates for all target-source combinations
-        for tgt_ind in tgt_inds:
-            for src_ind in src_inds:
-                # Get source genotypes for both haplotypes
-                src_gt_h1 = list(g[src_ind * 2 + 0])
-                src_gt_h2 = list(g[src_ind * 2 + 1])
-                
-                hap_match_pct = 0.0
-                valid_calculation = True
-                
-                # Calculate match rate for both target haplotypes
-                for ploidy_i in range(2):
-                    hap_site_num = 0
-                    hap_shared_src_hom_site_num = 0
-                    hap_shared_src_het_site_num = 0
-                    
-                    tgt_gt = list(g[tgt_ind * 2 + ploidy_i])
-                    
-                    # Iterate through all SNPs
-                    for snp_i in range(snp_num):
-                        # Check if target or source has variant at this position
-                        if (tgt_gt[snp_i] == "1" or 
-                            src_gt_h1[snp_i] == "1" or 
-                            src_gt_h2[snp_i] == "1"):
-                            hap_site_num += 1
-                        
-                        # Count shared sites where target has variant
-                        if tgt_gt[snp_i] == "1":
-                            src_allele_sum = int(src_gt_h1[snp_i]) + int(src_gt_h2[snp_i])
-                            if src_allele_sum == 2:  # Source is homozygous variant
-                                hap_shared_src_hom_site_num += 1
-                            elif src_allele_sum == 1:  # Source is heterozygous
-                                hap_shared_src_het_site_num += 1
-                    
-                    # Calculate match percentage for this haplotype
-                    if hap_site_num > 0:
-                        hap_match_src_allele_num = (hap_shared_src_hom_site_num + 
-                                                   0.5 * hap_shared_src_het_site_num)
-                        hap_match_pct += 0.5 * (hap_match_src_allele_num / hap_site_num)
-                    else:
-                        valid_calculation = False
-                        break
-                
-                # Only add valid match rates
-                if valid_calculation:
-                    match_rates.append(hap_match_pct)
-    
-    return match_rates
-
-def refactored_py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2):
-    """
-    Refactored version that processes ms file in chunks and uses more pythonic iteration.
-    Calculate match percentages between target and source individuals from ms simulation output.
-    
-    Improvements over py_cal_match_pct_ind_for_simulation:
-    1. Processes file in chunks rather than loading entire file into memory
-    2. Uses zip() for iterating over genotype positions instead of range indexing
-    3. More memory efficient for large files
     
     Arguments:
         output_ms str: Name of the ms output file.
@@ -788,7 +544,7 @@ def refactored_py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, an
         g = {}
         for sample_idx, line in enumerate(genotype_lines):
             g[sample_idx] = line.strip()
-        
+
         # Calculate match rates for all target-source combinations
         for tgt_ind in tgt_inds:
             for src_ind in src_inds:
@@ -823,8 +579,7 @@ def refactored_py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, an
                     
                     # Calculate match percentage for this haplotype
                     if hap_site_num > 0:
-                        hap_match_src_allele_num = (hap_shared_src_hom_site_num + 
-                                                   0.5 * hap_shared_src_het_site_num)
+                        hap_match_src_allele_num = hap_shared_src_hom_site_num + 0.5 * hap_shared_src_het_site_num
                         hap_match_pct += 0.5 * (hap_match_src_allele_num / hap_site_num)
                     else:
                         valid_calculation = False
@@ -837,21 +592,18 @@ def refactored_py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, an
         return sim_match_rates
     
     # Process file in chunks - read line by line instead of loading entire file
-    num_init_headers = 3
+    num_init_headers = 2 # minus 1 because of 0-index
     num_per_sim_headers = 5
     num_headers = num_init_headers + num_per_sim_headers
     spacing = nsamp + num_per_sim_headers
 
     with open(output_ms) as f:
+        genotype_lines = []
         for i,line in enumerate(f):
             # Skip initial headers
-            if i < num_init_headers:
+            if i < num_headers:
                 continue
             
-            # Check if we are at the start of a new simulation block
-            if (i - num_headers) % spacing == 0:
-                genotype_lines = []
-
             # Collect genotype lines for this simulation block
             if (i - num_headers) % spacing < nsamp:
                 genotype_lines.append(line)
@@ -860,5 +612,6 @@ def refactored_py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, an
             if (i - num_headers) % spacing == nsamp - 1:
                 sim_match_rates = _process_simulation_block(genotype_lines)
                 match_rates.extend(sim_match_rates)
+                genotype_lines = []
 
     return match_rates
