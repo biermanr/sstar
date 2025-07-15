@@ -18,6 +18,7 @@ import gzip
 import itertools
 import os
 import numpy as np
+import time
 import pandas as pd
 from multiprocessing import Process, Queue
 from sstar.utils import read_data, py2round, read_mapped_region_file, cal_matchpct
@@ -390,11 +391,25 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
         with open(ms_script, 'w') as o:
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
-        #_ms2vcf(output_ms, output_vcf, nsamp, seq_len)
 
-        # Calculate archaic match rates from the VCF file
-        # using the known ancestral and target names from the anc_list and tgt_list files.
-        # TODO
+        # Calculate archaic match rates from the .ms file utltimately using Kuhlwilm's utils.cal_matchpct() method
+        print("ABOUT TO PY MATCHRATE")
+        start = time.time()
+        sim_matchrates = cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2)
+        print(f"Time taken for Python match rate calculation: {time.time() - start:.2f} seconds")
+
+        # Calculate archaic match rates from the .ms file using an awk script which does the same calculations
+        print("ABOUT TO AWK MATCHRATE")
+        start = time.time()
+        awk_sim_matchrates = awk_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2)
+        print(f"Time taken for awk match rate calculation: {time.time() - start:.2f} seconds")
+
+        # Output both the py and awk match rates
+        with open(output_ms+".matchrates", 'w') as o:
+            o.write("py_match_rate,awk_match_rate\n")
+            for py_rate, awk_rate in zip(sim_matchrates, awk_sim_matchrates):
+                o.write(f"{py_rate},{awk_rate}\n")
+
         out_queue.put('Finished')
 
 def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2):
@@ -408,9 +423,10 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
         tgt_list str: Name of the file containing individuals from the target population.
 
     Returns:
-        null_match_rates list: List containing match percentages
+        null_match_rates list: List containing match percentages for each 
+                               simulation and combination of target and source individuals.
     """
-    null_match_rates = {}
+    null_match_rates = []
 
     chr_name = "1" # 
     mapped_intervals = None
@@ -421,9 +437,7 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
 
     sample_size = nsamp // ploidy
 
-    for sim_num,vcf in enumerate(_ms2vcfs(output_ms, "woosh.vcf", nsamp, seq_len, ploidy)):
-        #if sim_num % 100 == 0: print(f"Processing replicate {sim_num+1}...")
-
+    for sim_num,vcf in enumerate(_ms2vcfs(output_ms, output_ms+".temp", nsamp, seq_len, ploidy)):
         _, _, tgt_data, tgt_samples, src_data, src_samples = read_data(vcf, ref_ind_file, tgt_list, anc_list, anc_allele_file)
 
         num_tgt_samples = len(tgt_samples)
@@ -437,12 +451,10 @@ def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_li
 
             hap1_match_pct = hap1_res[-1]
             hap2_match_pct = hap2_res[-1]
-            hap_match_pct = 'NA'
 
-            if (hap1_match_pct != 'NA') and (hap2_match_pct != 'NA'): hap_match_pct = (hap1_match_pct + hap2_match_pct) / 2
-           
-            k = f"SIM-{sim_num}_TGT-{tgt_ind_index}_SRC-{src_ind_index}"
-            null_match_rates[k] = hap_match_pct
+            if (hap1_match_pct != 'NA') and (hap2_match_pct != 'NA'):
+                hap_match_pct = (hap1_match_pct + hap2_match_pct) / 2
+                null_match_rates.append(hap_match_pct)
 
     return null_match_rates
 
@@ -498,3 +510,136 @@ def _ms2vcfs(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
 
     if data:
         yield _data_to_vcf(vcf_file, data)
+
+
+
+def awk_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2):
+
+    awk_script = """
+    function calc_matchrate(){
+        for(tgt_ind in tgt_inds){
+            for(src_ind in src_inds){
+                # Assumes ploidy = 2 in both tgt and src
+                split(g[src_inds[src_ind]*2+0], src_gt_h1, "");
+                split(g[src_inds[src_ind]*2+1], src_gt_h2, "");
+
+                hap_match_pct = 0;
+                for(ploidy_i = 0; ploidy_i < 2; ++ploidy_i){
+                    hap_site_num = 0;
+                    hap_shared_src_hom_site_num = 0;
+                    hap_shared_src_het_site_num = 0;
+                    split(g[tgt_inds[tgt_ind]*2+ploidy_i], tgt_gt, "");
+
+                    for(snp_i = 1; snp_i <= num_snps; ++snp_i){
+                        if(tgt_gt[snp_i] == "1" || src_gt_h1[snp_i] == "1" || src_gt_h2[snp_i] == "1"){
+                            ++hap_site_num;
+                        }
+                        if(tgt_gt[snp_i] == "1" && (src_gt_h1[snp_i] + src_gt_h2[snp_i] == 2)){
+                            ++hap_shared_src_hom_site_num;
+                        }
+                        if(tgt_gt[snp_i] == "1" && (src_gt_h1[snp_i] + src_gt_h2[snp_i] == 1)){
+                            ++hap_shared_src_het_site_num;
+                        }
+                    }
+
+                    hap_match_src_allele_num = hap_shared_src_hom_site_num + 0.5*hap_shared_src_het_site_num;
+                    if(hap_site_num > 0){
+                        hap_match_pct += 0.5 * (hap_match_src_allele_num / hap_site_num);
+                    } else {
+                        hap_match_pct = "NA";
+                        break;
+                    }
+                }
+
+                if(hap_match_pct != "NA"){
+                    print hap_match_pct;
+                }
+            }
+        }
+    }
+    """
+
+    awk_script += """
+    BEGIN {
+    """
+
+    # Get the index of the target and source individual samples from files
+    # assuming the files are formatted with one individual per line
+    # in the format "ms_0", "ms_1", etc.
+    with open(anc_list) as f:
+        anc_list = [l.strip().split("ms_")[1] for l in f.readlines()]
+
+    with open(tgt_list) as f:
+        tgt_list = [l.strip().split("ms_")[1] for l in f.readlines()]
+
+
+    awk_script += """
+        # Unique per simulation
+        num_samples = {num_samples};
+        num_snps = {snp_num};
+        tgt_ind_str = "{tgt_ind_str}";
+        src_ind_str = "{src_ind_str}";
+    """.format(
+        num_samples=nsamp,
+        snp_num=snp_num,
+        tgt_ind_str=" ".join(str(t) for t in tgt_list),
+        src_ind_str=" ".join(str(s) for s in anc_list),
+    )
+
+    awk_script += """
+        # These are the number of header lines ms always adds
+        num_headers = 3;
+        per_sim_headers = 5;
+
+        # One-time calculations
+        headers = num_headers+per_sim_headers;
+        spacing = num_samples+per_sim_headers;
+
+        split(tgt_ind_str, tgt_inds);
+        split(src_ind_str, src_inds);
+
+        # Sanity checks
+        # - make sure none of the tgt or src individuals are the same
+        # - make sure none of the tgt or src individuals aren't indexed
+        #   higher than possible given the ploidy and nsamp
+        # TODO
+
+        OFS="";
+    }
+    """
+
+    awk_script += """
+    NR < headers {
+        next;
+
+    } (NR-headers)%spacing < num_samples {
+        g[(NR-headers)%spacing] = $1;
+
+    } (NR-headers)%spacing == num_samples {
+        sim_num += 1;
+        calc_matchrate()
+        # Clear g for next simulation replicate
+        delete g
+    } END {
+        calc_matchrate()
+    }
+    """
+
+
+    # Write the awk script
+    awk_script_file = output_ms + ".awk"
+    with open(awk_script_file, 'w') as f:
+        f.write(awk_script)
+
+    # Run the awk script on the ms output file and collect the stdout
+    cmd = f"awk -f {awk_script_file} {output_ms}"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Error running awk script: {result.stderr}")
+    
+    # Parse the output and convert to a list of floats
+    match_rates = []
+    for line in result.stdout.strip().split('\n'):
+            match_rates.append(float(line.strip()))
+
+    return match_rates

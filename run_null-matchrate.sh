@@ -4,6 +4,8 @@ set -eo pipefail
 ml anaconda3/2024.10
 conda activate sstar
 
+rm -rf null-matchrates
+
 sstar null-matchrate \
     --model examples/models/BonoboGhost_4K19_no_introgression.yaml \
     --ms-dir ext/msdir \
