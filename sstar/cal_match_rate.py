@@ -392,126 +392,19 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
 
-        # Calculate the archaic match rates from the .ms file using the py_cal_match_pct_ind_for_simulation function
-        print("ABOUT TO DIRECT PY MATCHRATE")
-        start = time.time()
-        py_sim_matchrates = py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2)
-        print(f"Time taken for direct Python match rate calculation: {time.time() - start:.2f} seconds")
+        # Calculate the archaic match rates from the .ms file
+        sim_archaic_matchrates = py_cal_match_pct_ind_for_simulation(output_ms, nsamp, anc_list, tgt_list, ploidy=2)
 
-        # Calculate archaic match rates from the .ms file utltimately using Kuhlwilm's utils.cal_matchpct() method
-        print("ABOUT TO KUHLWILM PY MATCHRATE")
-        start = time.time()
-        kuhlwilm_sim_matchrates = cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2)
-        print(f"Time taken for Python match rate calculation: {time.time() - start:.2f} seconds")
-
-        # Output both the py and awk match rates
+        # Output the archaic match rates
         with open(output_ms+".matchrates", 'w') as o:
-            o.write("direct_py_rate, kuhlwilm_py_rate\n")
-            for direct_py_rate, kuhlwilm_py_rate in zip(py_sim_matchrates, kuhlwilm_sim_matchrates):
-                o.write(f"{direct_py_rate},{kuhlwilm_py_rate}\n")
+            o.write("archaic_matchrate\n")
+            for archaic_matchrate in sim_archaic_matchrates:
+                o.write(f"{archaic_matchrate}\n")
 
         out_queue.put('Finished')
 
-def cal_match_pct_ind_for_simulation(output_ms, seq_len, nsamp, anc_list, tgt_list, ploidy=2):
-    """
-    Calculate the match percentage for every combination of target individual
-    against each source individual from each ms simulation replicate.
 
-    Arguments:
-        output_ms str: Name of the ms output file.
-        anc_list str: Name of the file containing individuals from the ancestral population.
-        tgt_list str: Name of the file containing individuals from the target population.
-
-    Returns:
-        null_match_rates list: List containing match percentages for each 
-                               simulation and combination of target and source individuals.
-    """
-    null_match_rates = []
-
-    chr_name = "1" # 
-    mapped_intervals = None
-    win_start = 0
-    win_end = seq_len
-    ref_ind_file = None
-    anc_allele_file = None
-
-    sample_size = nsamp // ploidy
-
-    for sim_num,vcf in enumerate(_ms2vcfs(output_ms, output_ms+".temp", nsamp, seq_len, ploidy)):
-        _, _, tgt_data, tgt_samples, src_data, src_samples = read_data(vcf, ref_ind_file, tgt_list, anc_list, anc_allele_file)
-
-        num_tgt_samples = len(tgt_samples)
-        num_src_samples = len(src_samples)
-
-        # Calculate match percentages for each combination of target and source individuals
-        for tgt_ind_index, src_ind_index in itertools.product(range(num_tgt_samples), range(num_src_samples)):
-
-            hap1_res = cal_matchpct(chr_name, mapped_intervals, tgt_data, src_data, tgt_ind_index, src_ind_index, 0, int(win_start), int(win_end), sample_size)
-            hap2_res = cal_matchpct(chr_name, mapped_intervals, tgt_data, src_data, tgt_ind_index, src_ind_index, 1, int(win_start), int(win_end), sample_size)
-
-            hap1_match_pct = hap1_res[-1]
-            hap2_match_pct = hap2_res[-1]
-
-            if (hap1_match_pct != 'NA') and (hap2_match_pct != 'NA'):
-                hap_match_pct = (hap1_match_pct + hap2_match_pct) / 2
-                null_match_rates.append(hap_match_pct)
-
-    return null_match_rates
-
-
-
-
-def _ms2vcfs(ms_file, vcf_file, nsamp, seq_len, ploidy=2):
-    """
-    Description:
-        Converts ms output file into multiple VCF files, one for each ms replicate.
-
-    Arguments:
-        ms_file str: Name of the ms file (input).
-        vcf_file str: Name of the VCF file (output).
-        nsamp int: Number of haploid genomes.
-        seq_len int: Sequence length.
-        ploidy int: Ploidy of each individual.
-    """
-    header = "##fileformat=VCFv4.2\n"
-    header += "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n"
-    header += "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(['ms_' + str(i) for i in range(int(nsamp/ploidy))])
-
-    data = {}
-
-    def _data_to_vcf(vcf_file, data):
-        with open(vcf_file, 'w') as o:
-            o.write(header+"\n")
-        
-            for j in range(len(data['pos'])):
-                pos = int(seq_len * float(data['pos'][j]))
-                genotypes = "".join([data['geno'][k][j] for k in range(len(data['geno']))])
-                genotypes = "\t".join([a+'|'+b for a,b in zip(genotypes[0::ploidy],genotypes[1::ploidy])])
-                o.write(f"1\t{pos}\t.\tA\tT\t100\tPASS\t.\tGT\t{genotypes}\n")
-
-        return vcf_file
-
-
-    with open(ms_file, 'r') as f:
-        f.readline()
-        f.readline()
-        for l in f.readlines():
-            if l.startswith('//'):
-                if data:
-                    yield _data_to_vcf(vcf_file, data)
-
-                data = {}
-                data['pos'] = []
-                data['geno'] = []
-            elif l.startswith('positions'):
-                data['pos'] = l.rstrip().split(" ")[1:]
-            elif l.startswith('0') or l.startswith('1'):
-                data['geno'].append(l.rstrip())
-
-    if data:
-        yield _data_to_vcf(vcf_file, data)
-
-def py_cal_match_pct_ind_for_simulation(output_ms, snp_num, nsamp, anc_list, tgt_list, ploidy=2):
+def py_cal_match_pct_ind_for_simulation(output_ms, nsamp, anc_list, tgt_list, ploidy=2):
     """
     Calculate match percentages between target and source individuals from ms simulation output.
     
