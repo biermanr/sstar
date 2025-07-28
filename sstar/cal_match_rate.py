@@ -22,6 +22,8 @@ import time
 import pandas as pd
 from multiprocessing import Process, Queue
 from sstar.utils import read_data, py2round, read_mapped_region_file, cal_matchpct
+from dataclasses import dataclass
+import logging
 
 import subprocess
 import demes
@@ -48,13 +50,13 @@ def cal_match_pct(vcf, ref_ind_file, tgt_ind_file, src_ind_file, anc_allele_file
     ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(vcf, ref_ind_file, tgt_ind_file, src_ind_file, anc_allele_file)
 
     res = []
-    chr_names = ref_data.keys()
+    chr_names = tgt_data.keys()
 
     mapped_intervals = read_mapped_region_file(mapped_region_file)
     data, windows, samples = _read_score_file(score_file, chr_names, tgt_samples)
     sample_size = len(samples)
 
-    header = 'chrom\tstart\tend\tsample\tmatch_rate\tsrc_sample'
+    header = 'chrom\tstart\tend\tsample\tmatch_rate\tsrc_sample\tS*_SNP_number'
 
     if thread > 1: thread = min(os.cpu_count()-1, sample_size, thread)    
     res = _cal_tgt_match_pct_manager(data, mapped_intervals, samples, tgt_samples, src_samples, tgt_data, src_data, sample_size, thread)
@@ -95,8 +97,10 @@ def _read_score_file(score_file, chr_names, tgt_samples):
             win_start = elements[1]
             win_end = elements[2]
             sample = elements[3]
+            num_snps = elements[6]
             if sample not in tgt_samples: continue
-            if elements[6] == 'NA': continue
+            if num_snps == 'NA': continue
+
             if sample not in data.keys(): 
                 data[sample] = []
                 samples.append(sample)
@@ -201,10 +205,10 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
         sample = elements[3]
 
         # RB note: none of these values are used, can be commented out
-        s_star_snps = elements[-1].split(",")
-        s_start, s_end = s_star_snps[0], s_star_snps[-1]
-        key1 = win_start+'-'+win_end
-        key2 = s_start+'-'+s_end
+        #s_star_snps = elements[-1].split(",")
+        #s_start, s_end = s_star_snps[0], s_star_snps[-1]
+        #key1 = win_start+'-'+win_end
+        #key2 = s_start+'-'+s_end
 
         for src_ind_index in range(len(src_samples)):
             src_sample = src_samples[src_ind_index]
@@ -224,7 +228,158 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
 ########################################################
 # TEMPORARILY ADDING archaic matchrate simulation code #
 ########################################################
-def get_null_matchrates(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
+def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seed):
+    """
+    Description:
+    """
+    logging.basicConfig(level=logging.INFO) # NOTE SETUP SOMEWHERE ELSE
+    logging.info("Calculating null match rates from simulated data without introgression...")
+    logging.info(f"Using threshold file: {threshold_fpath}")
+    logging.info(f"Using match rate file: {matchrate_fpath}")
+    logging.info(f"Using score file: {score_fpath}")
+    logging.info(f"Using demographic model: {model}")
+    logging.info(f"Using ms program in directory: {ms_dir}")
+    logging.info(f"Using N0: {N0}, sample size: {nsamp}, number of replicates: {nreps}")
+    logging.info(f"Ancestral population index: {anc_index}, size: {anc_size}")
+    logging.info(f"Target population index: {tgt_index}, size: {tgt_size}")
+    logging.info(f"Mutation rate: {mut_rate}, recombination rate: {rec_rate}")
+    logging.info(f"Output directory: {output_dir}, threads: {threads}, seeds: {seed}")
+
+    # Use the output of the `sstar score` command to get the number of SNPs per sample per region
+    # here's what the columns of the TSV file look like:
+    # chrom	start	end	sample	S*_score	region_ind_SNP_number	S*_SNP_number	S*_SNPs
+    snps_per_sample_per_region = {}
+    with open(score_fpath) as f:
+        f.readline() # Skip header
+        for line in f:
+            elements = line.strip().split('\t')
+            chrom, start, end, sample, _s_star_score, _region_ind_SNP_number, S_star_SNP_number, _S_star_SNPs = elements
+            k = f"{sample}:{chrom}:{start}-{end}"
+            if k in snps_per_sample_per_region:
+                raise ValueError(f"Duplicate region {k} found in score file {score_fpath}.")
+            
+            snps_per_sample_per_region[k] = int(S_star_SNP_number)
+
+    # Use the output of the `sstar matchrate` command to get the archaic match rates per sample per region
+    # here's what the columns of the TSV file look like:
+    # chrom	start	end	sample	match_rate	src_sample
+    archaic_match_rates = {}
+    with open(matchrate_fpath) as f:
+        f.readline() # Skip header
+        for line in f:
+            elements = line.strip().split('\t')
+            chrom, start, end, sample, match_rate, src_sample = elements
+            k = f"{sample}:{chrom}:{start}-{end}"
+            if k in archaic_match_rates:
+                raise ValueError(f"Duplicate region {k} found in match rate file {matchrate_fpath}.")
+            
+            archaic_match_rates[k] = (float(match_rate), src_sample)
+
+    # Loop through the significant regions in the output file of `sstar threshold`
+    # which has the following columns:
+    # chrom	start	end	sample	S*_score	expected_S*_score	local_recomb_rate	quantile	significant
+    @dataclass
+    class SignificantRegion:
+        chrom: str
+        start: int
+        end: int
+        sample: str
+        S_star_score: float
+        expected_S_star_score: float
+        local_recomb_rate: float
+        quantile: float
+        archaic_match_rate: float
+        src_sample: str
+        snp_num: int
+        match_rate_pvalue: float = None  # Placeholder for p-value, to be calculated later
+
+    significant_regions = []
+    with open(threshold_fpath) as f:
+        f.readline() # Skip header
+        for line in f:
+            elements = line.strip().split('\t')
+            chrom, start, end, sample, S_star_score, expected_S_star_score, local_recomb_rate, quantile, significant = elements
+            if significant == 'False':
+                continue
+
+            k = f"{sample}:{chrom}:{start}-{end}"
+            if k not in snps_per_sample_per_region:
+                raise ValueError(f"Region {k} not found in `sstar score` output file.")
+
+            if k not in archaic_match_rates:
+                raise ValueError(f"Region {k} not found in `sstar matchrate` output file.")
+            
+            snp_num = snps_per_sample_per_region[k]
+            archaic_match_rate, src_sample = archaic_match_rates[k]
+            significant_region = SignificantRegion(
+                chrom=chrom,
+                start=int(start),
+                end=int(end),
+                sample=sample,
+                S_star_score=float(S_star_score),
+                expected_S_star_score=float(expected_S_star_score),
+                local_recomb_rate=float(local_recomb_rate),
+                quantile=float(quantile),
+                archaic_match_rate=archaic_match_rate,
+                src_sample=src_sample,
+                snp_num=snp_num
+            )
+            significant_regions.append(significant_region)
+
+    # Create a list of unique region-lengths and number of SNPs from the significant_regions
+    region_lengths_num_snps = [(r.end - r.start + 1, r.snp_num) for r in significant_regions]
+    unique_region_lengths_num_snps = list(set(region_lengths_num_snps))
+
+    # For each combination of region length and number of SNPs, run the null match rate simulation
+    null_matchrates_per_len_per_snp_num = {}
+    for region_length, snp_num in unique_region_lengths_num_snps:
+        null_matchrates = _get_null_matchrates(
+            model=model,
+            ms_dir=ms_dir,
+            N0=N0,
+            nsamp=nsamp,
+            nreps=nreps,
+            anc_index=anc_index,
+            anc_size=anc_size,
+            tgt_index=tgt_index,
+            tgt_size=tgt_size,
+            mut_rate=mut_rate,
+            rec_rate=rec_rate,
+            seq_len=region_length,
+            snp_num_range=(snp_num, snp_num),
+            output_dir=output_dir,
+            thread=thread,
+            seeds=seeds
+        )
+
+        null_matchrates_per_len_per_snp_num[(region_length, snp_num)] = null_matchrates
+
+    # For each significant region, calculate the p-value based on the null match rates
+    # for the corresponding region length and number of SNPs
+    for region in significant_regions:
+        region_length = region.end - region.start + 1
+        snp_num = region.snp_num
+
+        if not (region_length, snp_num) in null_matchrates_per_len_per_snp_num:
+            raise ValueError(f"No null match rates found for region length {region_length} and SNP number {snp_num}.")
+
+        null_matchrates = null_matchrates_per_len_per_snp_num[(region_length, snp_num)]
+
+        # Calculate the p-value as the proportion of null match rates that are greater than or equal to the archaic match rate
+        p_value = sum(1 for m in null_matchrates if m >= region.archaic_match_rate) / len(null_matchrates)
+        region.match_rate_pvalue = p_value
+
+    # Write the results to a new output file
+    output_file = os.path.join(output_dir, 'archaic_matchrate_pvalues.tsv')
+    with open(output_file, 'w') as f:
+        header = "chrom\tstart\tend\tsample\tS*_score\texpected_S*_score\tlocal_recomb_rate\tquantile\tarchaic_match_rate\tsrc_sample\tsnp_num\tmatch_rate_pvalue"
+        f.write(header + "\n")
+        for region in significant_regions:
+            line = f"{region.chrom}\t{region.start}\t{region.end}\t{region.sample}\t{region.S_star_score}\t{region.expected_S_star_score}\t{region.local_recomb_rate}\t{region.quantile}\t{region.archaic_match_rate}\t{region.src_sample}\t{region.snp_num}\t{region.match_rate_pvalue}"
+            f.write(line + "\n")
+
+
+def _get_null_matchrates(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
     """
     Description:
         Calculates quantiles of expected S*.
