@@ -56,7 +56,7 @@ def cal_match_pct(vcf, ref_ind_file, tgt_ind_file, src_ind_file, anc_allele_file
     data, windows, samples = _read_score_file(score_file, chr_names, tgt_samples)
     sample_size = len(samples)
 
-    header = 'chrom\tstart\tend\tsample\tmatch_rate\tsrc_sample\tS*_SNP_number'
+    header = 'chrom\tstart\tend\tsample\tmatch_rate\tsrc_sample'
 
     if thread > 1: thread = min(os.cpu_count()-1, sample_size, thread)    
     res = _cal_tgt_match_pct_manager(data, mapped_intervals, samples, tgt_samples, src_samples, tgt_data, src_data, sample_size, thread)
