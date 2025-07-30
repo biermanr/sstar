@@ -196,7 +196,6 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
     Returns:
         res list: List containing estimated p-values and other statistics.
     """
-    print(data)
     res = []
     for line in data:
         elements = line.split("\t")
@@ -228,7 +227,7 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
 ########################################################
 # TEMPORARILY ADDING archaic matchrate simulation code #
 ########################################################
-def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seed):
+def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seeds):
     """
     Description:
     """
@@ -243,7 +242,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
     logging.info(f"Ancestral population index: {anc_index}, size: {anc_size}")
     logging.info(f"Target population index: {tgt_index}, size: {tgt_size}")
     logging.info(f"Mutation rate: {mut_rate}, recombination rate: {rec_rate}")
-    logging.info(f"Output directory: {output_dir}, threads: {threads}, seeds: {seed}")
+    logging.info(f"Output directory: {output_dir}, threads: {threads}, seeds: {seeds}")
 
     # Use the output of the `sstar score` command to get the number of SNPs per sample per region
     # here's what the columns of the TSV file look like:
@@ -254,11 +253,11 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, _s_star_score, _region_ind_SNP_number, S_star_SNP_number, _S_star_SNPs = elements
-            k = f"{sample}:{chrom}:{start}-{end}"
+            k = f"Nean:{sample}:{chrom}:{start}-{end}" # NOTE HARDCODING Nean as source sample, but should be a parameter!!
             if k in snps_per_sample_per_region:
                 raise ValueError(f"Duplicate region {k} found in score file {score_fpath}.")
             
-            snps_per_sample_per_region[k] = int(S_star_SNP_number)
+            snps_per_sample_per_region[k] = int(S_star_SNP_number) if S_star_SNP_number != 'NA' else 0
 
     # Use the output of the `sstar matchrate` command to get the archaic match rates per sample per region
     # here's what the columns of the TSV file look like:
@@ -269,11 +268,12 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, match_rate, src_sample = elements
-            k = f"{sample}:{chrom}:{start}-{end}"
+            k = f"{src_sample}:{sample}:{chrom}:{start}-{end}"
             if k in archaic_match_rates:
                 raise ValueError(f"Duplicate region {k} found in match rate file {matchrate_fpath}.")
-            
-            archaic_match_rates[k] = (float(match_rate), src_sample)
+
+            match_rate = float(match_rate) if match_rate != 'NA' else 0.0
+            archaic_match_rates[k] = (match_rate, src_sample)
 
     # Loop through the significant regions in the output file of `sstar threshold`
     # which has the following columns:
@@ -302,7 +302,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             if significant == 'False':
                 continue
 
-            k = f"{sample}:{chrom}:{start}-{end}"
+            k = f"Nean:{sample}:{chrom}:{start}-{end}" #NOTE HARDCODING Nean as source sample, but should be a parameter!!
             if k not in snps_per_sample_per_region:
                 raise ValueError(f"Region {k} not found in `sstar score` output file.")
 
@@ -330,8 +330,15 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
     region_lengths_num_snps = [(r.end - r.start + 1, r.snp_num) for r in significant_regions]
     unique_region_lengths_num_snps = list(set(region_lengths_num_snps))
 
+    logging.info(f"Number of significant regions: {len(significant_regions)}")
+    logging.info(f"Number of unique region lengths / SNP numbers to simulate: {len(unique_region_lengths_num_snps)}")
+
     # For each combination of region length and number of SNPs, run the null match rate simulation
-    null_matchrates_per_len_per_snp_num = {}
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, 'archaic_matchrate_pvalues.tsv')
+    output_f = open(output_file, 'w')
+    header = "chrom\tstart\tend\tsample\tS*_score\texpected_S*_score\tlocal_recomb_rate\tquantile\tarchaic_match_rate\tsrc_sample\tsnp_num\tmatch_rate_pvalue"
+    output_f.write(header + "\n")
     for region_length, snp_num in unique_region_lengths_num_snps:
         null_matchrates = _get_null_matchrates(
             model=model,
@@ -346,38 +353,35 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             mut_rate=mut_rate,
             rec_rate=rec_rate,
             seq_len=region_length,
-            snp_num_range=(snp_num, snp_num),
+            snp_num_range=(snp_num, snp_num, 1), #start and end are the same, step size is 1 to just get that specific SNP number
             output_dir=output_dir,
-            thread=thread,
-            seeds=seeds
+            thread=threads,
+            seeds=seeds,
         )
 
-        null_matchrates_per_len_per_snp_num[(region_length, snp_num)] = null_matchrates
+        # NOTE THIS IS STRANGELY SETUP WHERE IT LOOPS THROUGH THE SIGNIFICANT REGIONS
+        # NOTE TO SEE WHICH ARE IN THIS NULL MATCHRATE SIMULATION AND THEN CALCULATES THE P-VALUE
+        # NOTE REFACTOR THIS LATER BY BASICALLY CHANGING THE LOOP ORDER
+        # For each significant region, calculate the p-value based on the null match rates
+        # for the corresponding region length and number of SNPs
+        for r in significant_regions:
+            if r.end - r.start + 1 != region_length:
+                continue
 
-    # For each significant region, calculate the p-value based on the null match rates
-    # for the corresponding region length and number of SNPs
-    for region in significant_regions:
-        region_length = region.end - region.start + 1
-        snp_num = region.snp_num
+            if r.snp_num != snp_num:
+                continue
 
-        if not (region_length, snp_num) in null_matchrates_per_len_per_snp_num:
-            raise ValueError(f"No null match rates found for region length {region_length} and SNP number {snp_num}.")
+            # Calculate the p-value as the proportion of null match rates that are greater than or equal to the archaic match rate
+            p_value = sum(1 for m in null_matchrates if m >= r.archaic_match_rate) / len(null_matchrates)
+            r.match_rate_pvalue = p_value
 
-        null_matchrates = null_matchrates_per_len_per_snp_num[(region_length, snp_num)]
+            # Write the significant region with its p-value to the output file
+            output_f.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.sample}\t{r.S_star_score}\t{r.expected_S_star_score}\t{r.local_recomb_rate}\t{r.quantile}\t{r.archaic_match_rate}\t{r.src_sample}\t{r.snp_num}\t{py2round(r.match_rate_pvalue, 6)}\n")
 
-        # Calculate the p-value as the proportion of null match rates that are greater than or equal to the archaic match rate
-        p_value = sum(1 for m in null_matchrates if m >= region.archaic_match_rate) / len(null_matchrates)
-        region.match_rate_pvalue = p_value
 
-    # Write the results to a new output file
-    output_file = os.path.join(output_dir, 'archaic_matchrate_pvalues.tsv')
-    with open(output_file, 'w') as f:
-        header = "chrom\tstart\tend\tsample\tS*_score\texpected_S*_score\tlocal_recomb_rate\tquantile\tarchaic_match_rate\tsrc_sample\tsnp_num\tmatch_rate_pvalue"
-        f.write(header + "\n")
-        for region in significant_regions:
-            line = f"{region.chrom}\t{region.start}\t{region.end}\t{region.sample}\t{region.S_star_score}\t{region.expected_S_star_score}\t{region.local_recomb_rate}\t{region.quantile}\t{region.archaic_match_rate}\t{region.src_sample}\t{region.snp_num}\t{region.match_rate_pvalue}"
-            f.write(line + "\n")
+        break # NOTE STOPPING AFTER THE FIRST ITERATION OF NULL SIMULATIONS FOR TESTING PURPOSES
 
+    output_f.close()
 
 def _get_null_matchrates(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
     """
@@ -401,13 +405,16 @@ def _get_null_matchrates(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, t
         output_dir str: Number of the output directory.
         thread int: Number of threads.
         seeds: list: Three random seed numbers used in ms simulation.
+
+    Returns:
+        null_matchrates list: List of match percentages for each target-source individual combination.
     """
     if seeds is not None: np.random.seed(np.sum(seeds))
     output_dir = os.path.abspath(output_dir)
     if os.path.exists(output_dir) is False: subprocess.call(['mkdir', output_dir])
     _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir)
-    _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds)
-    #_summary(output_dir, rec_rate)
+    null_matchrates = _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds)
+    return null_matchrates
 
 def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir):
     """
@@ -424,8 +431,8 @@ def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output
     """
     scaled_mut_rate = 4*N0*mut_rate*seq_len
     scaled_rec_rate = 4*N0*rec_rate*seq_len
-    mut_rate_list = norm.rvs(loc=scaled_mut_rate, scale=0.233, size=nreps)
-    rec_rate_list = nbinom.rvs(n=0.5, p=0.5/(0.5+scaled_rec_rate), size=nreps)
+    mut_rate_list = norm.rvs(loc=scaled_mut_rate, scale=0.233, size=nreps)     # For each simulation, draw a random mutation rate centered around the scaled mutation rate
+    rec_rate_list = nbinom.rvs(n=0.5, p=0.5/(0.5+scaled_rec_rate), size=nreps) # For each simulation, draw a random recombination rate from a negative binomial distribution centered around the scaled recombination rate
 
     rates = f'{output_dir}/rates.combination'
     with open(rates, 'w') as o:
@@ -456,6 +463,9 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt
         output_dir str: Name of the output directory.
         thread int: Number of threads.
         seeds list: Three random seed numbers used in ms simulation.
+
+    Returns:
+        sim_archaic_matchrates list: List of match percentages for each target-source individual combination.
     """
     graph = demes.load(model)
     samples = np.zeros(len(graph.demes))
@@ -500,16 +510,22 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt
     for snp_num in snp_num_list:
         in_queue.put(snp_num)
 
+    # NOTE THE CODE BELOW ONLY RUNS ONCE, IT'S NOT USING MULTIPROCESSING
+    ms_output_paths = []
     try:
         for worker in workers:
             worker.start()
         for snp_num in snp_num_list:
-            out_queue.get()
+            ms_output_paths.append(out_queue.get())
         for worker in workers:
             worker.terminate()
     finally:
         for worker in workers:
             worker.join()
+
+    # Calculate the archaic match rates from the .ms file
+    sim_archaic_matchrates = py_cal_match_pct_ind_for_simulation(ms_output_paths[0], nsamp, anc_list, tgt_list, ploidy=2)
+    return sim_archaic_matchrates
 
 def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, anc_list, tgt_list, seeds):
     """
@@ -532,9 +548,8 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
     """
     while True:
         snp_num = in_queue.get()
-        output_subdir = f'{output_dir}/{snp_num}'
+        output_subdir = f'{output_dir}/{snp_num}-SNPs_{seq_len}-bp'
         output_ms = f'{output_subdir}/sim.ms'
-        output_vcf = f'{output_subdir}/sim.vcf'
         ms_script = f'{output_subdir}/run_ms.sh'
 
         if seeds is not None:
@@ -547,16 +562,7 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
 
-        # Calculate the archaic match rates from the .ms file
-        sim_archaic_matchrates = py_cal_match_pct_ind_for_simulation(output_ms, nsamp, anc_list, tgt_list, ploidy=2)
-
-        # Output the archaic match rates
-        with open(output_ms+".matchrates", 'w') as o:
-            o.write("archaic_matchrate\n")
-            for archaic_matchrate in sim_archaic_matchrates:
-                o.write(f"{archaic_matchrate}\n")
-
-        out_queue.put('Finished')
+        out_queue.put(output_ms)
 
 
 def py_cal_match_pct_ind_for_simulation(output_ms, nsamp, anc_list, tgt_list, ploidy=2):

@@ -50,7 +50,7 @@ def _run_archaic_match_rate_pvalue(args):
         rec_rate=args.rec_rate,
         output_dir=args.output_dir,
         threads=args.threads,
-        seed=args.seed,
+        seeds=args.seeds,
     )
 
 def _run_threshold(args):
@@ -147,7 +147,7 @@ def _s_star_cli_parser():
     parser.add_argument('--thread', type=int, default=1, help='number of thread')
     parser.set_defaults(runner=_run_quantile)
 
-    # Arguments for null matchrate subcommand
+    # Arguments for matchrate p-value subcommand
     parser = subparsers.add_parser('matchrate-pvalue', help='calculate archaic matchrate p-values from simulated data without introgression')
     parser.add_argument('--threshold-output', type=str, required=True, help='output file from the `sstar threshold` command')
     parser.add_argument('--matchrate-output', type=str, required=True, help='output file from the `sstar matchrate` command')
@@ -157,7 +157,7 @@ def _s_star_cli_parser():
     parser.add_argument('--N0', type=int, required=True, help='N0 used in ms simulation')
     parser.add_argument('--nsamp', type=int, required=True, help='sample size (haploid) used in ms simulation')
     parser.add_argument('--nreps', type=int, required=True, help='number of replicates used in ms simulation')
-    parser.add_argument('--seed', type=int, default=None, help='random seed number for ms simulation; default: None')
+    parser.add_argument('--seeds', type=int, nargs=3, default=None, help='three random seed numbers used in ms simulation; default: None')
     parser.add_argument('--anc-index', type=int, dest='anc_index', required=True, help='index of the ancestral population in the demographic model (start from 1)')
     parser.add_argument('--anc-size', type=int, dest='anc_size', required=True, help='sample size (haploid) of the ancestral population')
     parser.add_argument('--tgt-index', type=int, dest='tgt_index', required=True, help='index of the target population in the demographic model (start from 1)')
