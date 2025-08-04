@@ -253,7 +253,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, _s_star_score, _region_ind_SNP_number, S_star_SNP_number, _S_star_SNPs = elements
-            k = f"Nean:{sample}:{chrom}:{start}-{end}" # NOTE HARDCODING Nean as source sample, but should be a parameter!!
+            k = f"{sample}:{chrom}:{start}-{end}"
             if k in snps_per_sample_per_region:
                 raise ValueError(f"Duplicate region {k} found in score file {score_fpath}.")
             
@@ -268,7 +268,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, match_rate, src_sample = elements
-            k = f"{src_sample}:{sample}:{chrom}:{start}-{end}"
+            k = f"{sample}:{chrom}:{start}-{end}"
             if k in archaic_match_rates:
                 raise ValueError(f"Duplicate region {k} found in match rate file {matchrate_fpath}.")
 
@@ -302,7 +302,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             if significant == 'False':
                 continue
 
-            k = f"Nean:{sample}:{chrom}:{start}-{end}" #NOTE HARDCODING Nean as source sample, but should be a parameter!!
+            k = f"{sample}:{chrom}:{start}-{end}"
             if k not in snps_per_sample_per_region:
                 raise ValueError(f"Region {k} not found in `sstar score` output file.")
 

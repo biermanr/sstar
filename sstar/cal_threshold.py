@@ -75,7 +75,8 @@ def _build_gam_model(simulated_data, k, fit_lr):
         lr = FloatVector(data.iloc[:,3].values)
         ro.globalenv['lr'] = lr
         fmla = f's_star ~ te(snps, lr, q, k={k})'
-    else: fmla = f's_star ~ te(snps, q, k={k})'
+    else:
+        fmla = f's_star ~ te(snps, q, k={k})'
 
     fmla = Formula(fmla)
 

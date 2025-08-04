@@ -29,9 +29,6 @@ def data():
 
 def test_cal_match_pct(data):
     cal_match_pct(pytest.vcf, pytest.ref_ind_file, pytest.tgt_ind_file, pytest.src_ind_file, None, pytest.output, 1, pytest.score_file, None)
-    with open(pytest.output, 'r') as f:
-        res = [l for l in f]
-    with open(pytest.exp_output, 'r') as f:
-        exp_res = [l for l in f]
 
-    assert res == exp_res
+    with open(pytest.output, 'r') as observed_f, open(pytest.exp_output, 'r') as expected_f:
+        assert observed_f.read() == expected_f.read()
