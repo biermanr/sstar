@@ -299,8 +299,6 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, S_star_score, expected_S_star_score, local_recomb_rate, quantile, significant = elements
-            if significant == 'False':
-                continue
 
             k = f"{sample}:{chrom}:{start}-{end}"
             if k not in snps_per_sample_per_region:
@@ -377,9 +375,6 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
 
             # Write the significant region with its p-value to the output file
             output_f.write(f"{r.chrom}\t{r.start}\t{r.end}\t{r.sample}\t{r.S_star_score}\t{r.expected_S_star_score}\t{r.local_recomb_rate}\t{r.quantile}\t{r.archaic_match_rate}\t{r.src_sample}\t{r.snp_num}\t{py2round(r.match_rate_pvalue, 6)}\n")
-
-
-        break # NOTE STOPPING AFTER THE FIRST ITERATION OF NULL SIMULATIONS FOR TESTING PURPOSES
 
     output_f.close()
 
