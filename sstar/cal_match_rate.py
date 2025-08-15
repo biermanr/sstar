@@ -228,8 +228,35 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
 # TEMPORARILY ADDING archaic matchrate simulation code #
 ########################################################
 def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seeds):
-    """
-    Description:
+    """archaic_matchrate_pvalue: calculate p-values for archaic match rates
+
+    Arguments:
+        threshold_fpath str: Path to the file containing significant regions from `sstar threshold`
+        matchrate_fpath str: Path to the file containing archaic match rates from `sstar matchrate`
+        score_fpath str: Path to the file containing S* scores from `sstar score`
+        model str: Path to the Demes demographic model file for simulation
+        ms_dir str: Path to the directory containing the `ms` executable
+        N0 int: N0 used in ms simulation
+        nsamp int: Sample size (haploid) used in ms simulation
+        nreps int: Number of replicates used in ms simulation
+        anc_index int: Index of the ancestral population in the demographic model (1-based index)
+        anc_size int: Sample size (haploid) of the ancestral population
+        tgt_index int: Index of the target population in the demographic model (1-based index)
+        tgt_size int: Sample size (haploid) of the target population
+        mut_rate float: Mutation rate used in ms simulation
+        rec_rate float: Recombination rate used in ms simulation
+        output_dir str: Directory where the output file will be saved
+        threads int: Number of threads to use for the simulation (NOTE only 1 process is used for now)
+        seeds list: List of three random seed numbers used in ms simulation
+
+
+
+    Output:
+        output_dir/archaic_matchrate_pvalues.tsv: A TSV file containing the archaic match rates and their p-values for each significant region.
+
+    Intermediate outputs:
+        output_dir/X-SNPs_Y-bp/sim.ms: A directory for each unique region length and SNP number, containing the ms simulation output file.
+        output_dir/run_ms.sh: A shell script for running the ms simulation with the specified parameters.
     """
     logging.basicConfig(level=logging.INFO) # NOTE SETUP SOMEWHERE ELSE
     logging.info("Calculating null match rates from simulated data without introgression...")

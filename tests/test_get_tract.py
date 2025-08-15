@@ -16,50 +16,27 @@
 import pytest
 from sstar.get_tract import get_tract
 
-@pytest.fixture
-def data():
-    pytest.threshold = "./tests/data/test.tract.threshold"
-    pytest.src1_match_pct = "./tests/data/test.tract.src1.match.rate"
-    pytest.src2_match_pct = "./tests/data/test.tract.src2.match.rate"
-    pytest.exp_bed = "./tests/results/test.tract.exp.bed"
-    pytest.exp_bed_with_src = "./tests/results/test.tract.with.src.match.rate.exp.bed"
-    pytest.exp_src1_bed = "./tests/results/test.tract.exp.src1.bed"
-    pytest.exp_src2_bed = "./tests/results/test.tract.exp.src2.bed"
 
-def test_get_tract(data):
-    get_tract(threshold_file=pytest.threshold, match_pct_files=None, output_prefix='./tests/results/test.tract', diff=0)
-    f1 = open('./tests/results/test.tract.bed', 'r') 
-    res = f1.read()
-    f1.close()
-    f2 = open(pytest.exp_bed, 'r')
-    exp_res = f2.read()
-    f2.close()
+def test_get_tract(test_paths):
+    # Test 1: Basic tract extraction without match percentage files
+    get_tract(threshold_file=test_paths.threshold_file, match_pct_files=None, output_prefix=test_paths.tract_output_prefix, diff=0)
+    
+    with open(f'{test_paths.tract_output_prefix}.bed', 'r') as f, open(test_paths.expected_tract_bed_file, 'r') as ef:
+        assert f.read() == ef.read()
 
-    assert res == exp_res
+    # Test 2: Tract extraction with one source match percentage file
+    get_tract(threshold_file=test_paths.threshold_file, match_pct_files=[test_paths.src1_match_pct_file], 
+              output_prefix=test_paths.tract_with_src_output_prefix, diff=0)
 
-    get_tract(threshold_file=pytest.threshold, match_pct_files=[pytest.src1_match_pct], output_prefix='./tests/results/test.tract.with.src.match.rate', diff=0)
-    f1 = open('./tests/results/test.tract.with.src.match.rate.bed', 'r')
-    res = f1.read()
-    f1.close()
-    f2 = open(pytest.exp_bed_with_src, 'r')
-    exp_res = f2.read()
-    f2.close()
+    with open(f'{test_paths.tract_with_src_output_prefix}.bed', 'r') as f, open(test_paths.expected_tract_bed_with_src_file, 'r') as ef:
+        assert f.read() == ef.read()
 
-    assert res == exp_res
+    # Test 3: Tract extraction with two source match percentage files
+    get_tract(threshold_file=test_paths.threshold_file, match_pct_files=[test_paths.src1_match_pct_file, test_paths.src2_match_pct_file], 
+              output_prefix=test_paths.tract_output_prefix, diff=0)
+    
+    with open(f'{test_paths.tract_output_prefix}.src1.bed', 'r') as f1, open(test_paths.expected_tract_src1_bed_file, 'r') as ef1:
+        assert f1.read() == ef1.read()
 
-    get_tract(threshold_file=pytest.threshold, match_pct_files=[pytest.src1_match_pct, pytest.src2_match_pct], output_prefix='./tests/results/test.tract', diff=0)
-    f1 = open('./tests/results/test.tract.src1.bed', 'r')
-    res1 = f1.read()
-    f1.close()
-    f2 = open('./tests/results/test.tract.src2.bed', 'r')
-    res2 = f2.read()
-    f2.close()
-    f3 = open(pytest.exp_src1_bed, 'r')
-    exp_res1 = f3.read()
-    f3.close()
-    f4 = open(pytest.exp_src2_bed, 'r')
-    exp_res2 = f4.read()
-    f4.close()
-
-    assert res1 == exp_res1
-    assert res2 == exp_res2
+    with open(f'{test_paths.tract_output_prefix}.src2.bed', 'r') as f2, open(test_paths.expected_tract_src2_bed_file, 'r') as ef2:
+        assert f2.read() == ef2.read()

@@ -17,18 +17,19 @@ import pytest
 from sstar.cal_match_rate import cal_match_pct
 from sstar.utils import read_data
 
-@pytest.fixture
-def data():
-    pytest.ref_ind_file = "./examples/data/ind_list/ref.ind.list"
-    pytest.tgt_ind_file = "./examples/data/ind_list/tgt.ind.list"
-    pytest.src_ind_file = "./examples/data/ind_list/nean.ind.list"
-    pytest.vcf = "./tests/data/test.match.rate.data.vcf"
-    pytest.score_file = "./tests/results/test.match.rate.score.exp.results"
-    pytest.output = "./tests/results/test.match.rate.results"
-    pytest.exp_output = "./tests/results/test.match.rate.exp.results"
 
-def test_cal_match_pct(data):
-    cal_match_pct(pytest.vcf, pytest.ref_ind_file, pytest.tgt_ind_file, pytest.src_ind_file, None, pytest.output, 1, pytest.score_file, None)
+def test_cal_match_pct(test_paths):
+    cal_match_pct(
+        test_paths.match_rate_vcf_file, 
+        test_paths.ref_ind_file, 
+        test_paths.tgt_ind_file, 
+        test_paths.src_ind_file, 
+        None, 
+        test_paths.output_match_rate_file, 
+        1, 
+        test_paths.score_file, 
+        None
+    )
 
-    with open(pytest.output, 'r') as observed_f, open(pytest.exp_output, 'r') as expected_f:
+    with open(test_paths.output_match_rate_file, 'r') as observed_f, open(test_paths.expected_match_rate_file, 'r') as expected_f:
         assert observed_f.read() == expected_f.read()
