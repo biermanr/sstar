@@ -197,6 +197,22 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
             o.write(cmd+"\n")
         subprocess.call(['bash', ms_script])
         _ms2vcf(output_ms, output_vcf, nsamp, seq_len)
+
+        # RB note: why are we doing a subprocess call instead of using the python API for sstar score?
+        # RB note: this is sometimes creating an empty `output_vcf`
+        # RB note: seems like the error is when the snp_num is small like 1,2,3 (works with 15)
+        # RB note: the issue is that using small numbers of SNPs can lead to every row in the score file to have 0 snps per window and be null only
+        # RB note: The documentation says --snp-num-range SNP_NUM_RANGE SNP_NUM_RANGE SNP_NUM_RANGE range of SNP numbers in ms simulation; the first parameter is the minimum SNP number, the second parameter is the maximum SNP number, the third parameter is the step size
+        # RB note: And the snp_num is used as -s for `ms`, but I guess there's randomness about whether or not a SNP truly gets introduced?
+        # RB note: Looking in the documentation for ms (https://uchicago.app.box.com/s/l3e5uf13tikfjm7e1il1eujitlsjdx13) to see what -s means
+        # RB note: Ok apparently it actually sets the number of segregating sites, but doesn't guarantee the sites to be SNPs (value 1)
+        # RB note: ms also gives a `prob:` as the probability of having s segregating sites given the demography and the mutation rate `-t`
+        # RB note: so I guess I should try and select `-s` so that the number of SNPs approximately matches the observed?
+        # RB note: oh wait, I guess it's more complicated because SNPs that are present in (any?) individual of the ref population are filtered out
+        print("RB DEBUG GOT HERE", flush=True)
+        print(f"snp_num is {snp_num}")
+        print(f"output_vcf is {output_vcf}")
+        print(f"output_score is {output_score}")
         subprocess.call(['sstar', 'score', '--vcf', output_vcf, '--ref', ref_list, '--tgt', tgt_list, '--output', output_score, '--win-len', str(seq_len), '--win-step', str(seq_len), '--thread', '1'])
         _cal_quantile(output_score, output_quantile, snp_num)
         out_queue.put('Finished')
@@ -259,6 +275,14 @@ def _cal_quantile(in_file, out_file, snp_num):
     df = pd.read_csv(in_file, sep="\t").dropna()
     quantiles = np.arange(0.5,1,0.005)
     mean_df = df.groupby(['chrom', 'start', 'end'], as_index=False)['S*_score'].mean().dropna()
+
+    #RB NOTE the `df` is empty right now
+    print("DEBUGGING _cal_quantile")
+    print(f"df shape is {df.shape}")
+    print(df.head())
+    print(f"mean_df shape is {mean_df.shape}")
+    print(mean_df.head())
+
     scores = np.quantile(mean_df['S*_score'], quantiles)
     with open(out_file, 'w') as o:
         o.write('S*_score\tSNP_num\tquantile\n')
