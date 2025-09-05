@@ -250,7 +250,6 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
         seeds list: List of three random seed numbers used in ms simulation
 
 
-
     Output:
         output_dir/archaic_matchrate_pvalues.tsv: A TSV file containing the archaic match rates and their p-values for each significant region.
 
@@ -271,9 +270,8 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
     logging.info(f"Mutation rate: {mut_rate}, recombination rate: {rec_rate}")
     logging.info(f"Output directory: {output_dir}, threads: {threads}, seeds: {seeds}")
 
-    # Use the output of the `sstar score` command to get the number of SNPs per sample per region
-    # here's what the columns of the TSV file look like:
-    # chrom	start	end	sample	S*_score	region_ind_SNP_number	S*_SNP_number	S*_SNPs
+    # Use the input VCF file to get the distribution of the number of total segregating sites per region per sample.
+    # This is the TOTAL number of segregating sites, not just the S* SNPs.
     snps_per_sample_per_region = {}
     with open(score_fpath) as f:
         f.readline() # Skip header
@@ -352,7 +350,9 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             significant_regions.append(significant_region)
 
     # Create a list of unique region-lengths and number of SNPs from the significant_regions
-    region_lengths_num_snps = [(r.end - r.start + 1, r.snp_num) for r in significant_regions]
+    # RB NOTE AUG 30th 2025: currently iterating through S* SNPs, but should be iterating through segsites
+    # RB NOTE AUG 30th 2025: for now just hardcoding segsites to be 650
+    region_lengths_num_snps = [(r.end - r.start + 1, 650) for r in significant_regions]
     unique_region_lengths_num_snps = list(set(region_lengths_num_snps))
 
     logging.info(f"Number of significant regions: {len(significant_regions)}")
@@ -383,6 +383,8 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             thread=threads,
             seeds=seeds,
         )
+
+        # Determine the number of "S* SNPs" for each
 
         # NOTE THIS IS STRANGELY SETUP WHERE IT LOOPS THROUGH THE SIGNIFICANT REGIONS
         # NOTE TO SEE WHICH ARE IN THIS NULL MATCHRATE SIMULATION AND THEN CALCULATES THE P-VALUE

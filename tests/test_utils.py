@@ -16,16 +16,13 @@
 import allel
 import pytest
 import numpy as np
-from sstar.utils import (
-    parse_ind_file, read_geno_data, filter_data, read_data, 
-    get_ref_alt_allele, read_anc_allele, check_anc_allele, 
-    read_mapped_region_file, _cal_mapped_len, cal_matchpct
-)
+
+from sstar import utils 
 
 
 def test_parse_inds_file(test_paths):
-    ref_ind = parse_ind_file(test_paths.test_ref_ind_file)
-    tgt_ind = parse_ind_file(test_paths.test_tgt_ind_file)
+    ref_ind = utils.parse_ind_file(test_paths.test_ref_ind_file)
+    tgt_ind = utils.parse_ind_file(test_paths.test_tgt_ind_file)
 
     exp_ref_ind = ['ind5', 'ind6']
     exp_tgt_ind = ['ind1', 'ind2', 'ind3', 'ind4']
@@ -34,12 +31,12 @@ def test_parse_inds_file(test_paths):
     assert tgt_ind == exp_tgt_ind
 
     with pytest.raises(Exception) as e_info:
-        emp_ind = parse_ind_file(test_paths.empty_ind_file)
+        emp_ind = utils.parse_ind_file(test_paths.empty_ind_file)
 
 
 def test_read_geno_data(test_paths):
-    ref_ind = parse_ind_file(test_paths.test_ref_ind_file)
-    d = read_geno_data(test_paths.test_vcf_file, ref_ind, None, filter_missing=False)
+    ref_ind = utils.parse_ind_file(test_paths.test_ref_ind_file)
+    d = utils.read_geno_data(test_paths.test_vcf_file, ref_ind, None, filter_missing=False)
 
     vcf = allel.read_vcf(test_paths.test_vcf_file, alt_number=1, samples=ref_ind)
 
@@ -51,13 +48,13 @@ def test_read_geno_data(test_paths):
 
 
 def test_read_data(test_paths):
-    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(
+    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = utils.read_data(
         test_paths.test_vcf_file, test_paths.test_ref_ind_file, test_paths.test_tgt_ind_file, None, None
     )
 
-    rs = parse_ind_file(test_paths.test_ref_ind_file)
-    ts = parse_ind_file(test_paths.test_tgt_ind_file)
-    
+    rs = utils.parse_ind_file(test_paths.test_ref_ind_file)
+    ts = utils.parse_ind_file(test_paths.test_tgt_ind_file)
+
     assert np.array_equal(rs, ref_samples)
     assert np.array_equal(ts, tgt_samples)
 
@@ -77,7 +74,7 @@ def test_read_data(test_paths):
 
 
 def test_read_anc_allele(test_paths):
-    anc_allele = read_anc_allele(test_paths.anc_allele_file)
+    anc_allele = utils.read_anc_allele(test_paths.anc_allele_file)
 
     exp_anc_allele = {
         '21': {
@@ -88,17 +85,17 @@ def test_read_anc_allele(test_paths):
     assert anc_allele == exp_anc_allele
 
     with pytest.raises(Exception) as e_info:
-        anc_allele = read_anc_allele(test_paths.empty_anc_allele_file)
+        anc_allele = utils.read_anc_allele(test_paths.empty_anc_allele_file)
 
 
 def test_get_ref_alt_allele(test_paths):
-    ref_ind = parse_ind_file(test_paths.test_ref_ind_file)
-    tgt_ind = parse_ind_file(test_paths.test_tgt_ind_file)
+    ref_ind = utils.parse_ind_file(test_paths.test_ref_ind_file)
+    tgt_ind = utils.parse_ind_file(test_paths.test_tgt_ind_file)
 
     ref_vcf = allel.read_vcf(test_paths.test_vcf_file, alt_number=1, samples=ref_ind)
     tgt_vcf = allel.read_vcf(test_paths.test_vcf_file, alt_number=1, samples=tgt_ind)
 
-    ref_allele, alt_allele = get_ref_alt_allele(tgt_vcf['variants/REF'], tgt_vcf['variants/ALT'], tgt_vcf['variants/POS'])
+    ref_allele, alt_allele = utils.get_ref_alt_allele(tgt_vcf['variants/REF'], tgt_vcf['variants/ALT'], tgt_vcf['variants/POS'])
 
     exp_ref_allele = {
                          2309: 'G', 7879: 'C', 11484: 'A', 16249: 'A', 17324: 'G',
@@ -118,7 +115,7 @@ def test_get_ref_alt_allele(test_paths):
 
 
 def test_check_anc_allele(test_paths):
-    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(
+    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = utils.read_data(
         test_paths.test_vcf_file, test_paths.test_ref_ind_file, test_paths.test_tgt_ind_file, None, test_paths.anc_allele_file
     )
   
@@ -136,13 +133,13 @@ def test_check_anc_allele(test_paths):
 
 
 def test_cal_mapped_len(test_paths):
-    mapped_intervals = read_mapped_region_file(test_paths.mapped_regions_file)
-    len1 = _cal_mapped_len(mapped_intervals, '21', 0, 50000)
-    len2 = _cal_mapped_len(mapped_intervals, '21', 1000, 4000)
-    len3 = _cal_mapped_len(mapped_intervals, '21', 20000, 60000)
-    len4 = _cal_mapped_len(mapped_intervals, 21, 20000, 60000)
-    len5 = _cal_mapped_len(mapped_intervals, '21', 60000, 100000)
-    len6 = _cal_mapped_len(mapped_intervals, '21', 60000, 72000)
+    mapped_intervals = utils.read_mapped_region_file(test_paths.mapped_regions_file)
+    len1 = utils._cal_mapped_len(mapped_intervals, '21', 0, 50000)
+    len2 = utils._cal_mapped_len(mapped_intervals, '21', 1000, 4000)
+    len3 = utils._cal_mapped_len(mapped_intervals, '21', 20000, 60000)
+    len4 = utils._cal_mapped_len(mapped_intervals, 21, 20000, 60000)
+    len5 = utils._cal_mapped_len(mapped_intervals, '21', 60000, 100000)
+    len6 = utils._cal_mapped_len(mapped_intervals, '21', 60000, 72000)
 
     assert len1 == 50000
     assert len2 == 3000
@@ -153,7 +150,7 @@ def test_cal_mapped_len(test_paths):
 
 
 def test_cal_matchpct(test_paths):
-    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(
+    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = utils.read_data(
         "./tests/data/test.match.rate.data.vcf", 
         test_paths.ref_ind_file, 
         test_paths.tgt_ind_file, 
@@ -161,8 +158,21 @@ def test_cal_matchpct(test_paths):
         None
     )
 
-    hap1_match_pct = cal_matchpct('21', None, tgt_data, src_data, 0, 0, 0, 9400000, 9450000, len(tgt_data))[-1]
-    hap2_match_pct = cal_matchpct('21', None, tgt_data, src_data, 0, 0, 1, 9400000, 9450000, len(tgt_data))[-1]
+    hap1_match_pct = utils.cal_matchpct('21', None, tgt_data, src_data, 0, 0, 0, 9400000, 9450000, len(tgt_data))[-1]
+    hap2_match_pct = utils.cal_matchpct('21', None, tgt_data, src_data, 0, 0, 1, 9400000, 9450000, len(tgt_data))[-1]
 
     assert hap1_match_pct == 0.083333
     assert hap2_match_pct == 0.068966
+
+
+def test_calc_segsites_per_window(test_paths):
+    vcf_path = test_paths.test_vcf_file
+    win_len = 10000
+    win_step = 5000
+    ids = None
+
+    segsites = utils.calc_segsites_per_window(vcf_path, win_len, win_step, ids)
+
+    assert isinstance(segsites, list)
+    assert all(isinstance(x, int) for x in segsites)
+    assert len(segsites) > 0

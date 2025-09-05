@@ -16,6 +16,9 @@
 import allel
 import math
 import numpy as np
+import pathlib
+
+from typing import List, Set # NOTE can use normal list and set as type-hints if we use Python 3.9+
 
 #@profile
 def parse_ind_file(filename):
@@ -422,8 +425,43 @@ def _cal_hap_stats(gt, hap, pos, src_variants, src_hom_variants, src_het_variant
 
     return hap_variants_num, hap_site_num, hap_match_src_allele_num, hap_sfs, hap_match_pct
 
+
+
 def py2round(x, d=0):
     p = 10 ** d
     if x > 0: return float(math.floor((x * p) + 0.5))/p
     elif x < 0: float(math.ceil((x * p) - 0.5))/p
     else: return 0.0
+
+
+def calc_segsites_per_window(vcf_path: pathlib.Path, win_len: int, win_step: int, sample_ids: List[str] = None) -> List[int]:
+    """Calculate the number of segregating sites per window.
+    
+    Args:
+        vcf_path (pathlib.Path): Path to the VCF file.
+        win_len (int): Length of the window.
+        win_step (int): Step size for the window.
+        sample_ids (list[str], optional): Set of sample IDs to include. If None, include all samples.
+
+    Returns:
+        list[int]: List of number of segregating sites per window.
+    """
+    segsites = []
+
+    vcf = allel.read_vcf(vcf_path, samples=sample_ids)
+
+    start = 0
+    while start < vcf['variants/POS'][-1]:
+        end = start + win_len
+        in_window = (vcf['variants/POS'] >= start) & (vcf['variants/POS'] < end)
+        gt_window = vcf['calldata/GT'][in_window]
+        if gt_window.shape[0] == 0:
+            segsites.append(0)
+        else:
+            ac = allel.GenotypeArray(gt_window).count_alleles()
+            segsite_count = np.sum((ac[:, 1] > 0) & (ac[:, 1] < ac.sum(axis=1))) # NOT SURE WHAT'S HAPPENING HERE, might be correct
+            segsites.append(int(segsite_count))
+        start += win_step
+
+    breakpoint() #NOTE
+    return segsites
