@@ -167,12 +167,10 @@ def test_cal_matchpct(test_paths):
 
 def test_calc_segsites_per_window(test_paths):
     vcf_path = test_paths.test_vcf_file
-    win_len = 10000
-    win_step = 5000
+    win_len = 10_000
+    win_step = 5_000
     ids = None
 
     segsites = utils.calc_segsites_per_window(vcf_path, win_len, win_step, ids)
 
-    assert isinstance(segsites, list)
-    assert all(isinstance(x, int) for x in segsites)
-    assert len(segsites) > 0
+    assert segsites == [2, 2, 5, 5, 4, 5, 5, 4, 3, 2] #expected result based on the test VCF file

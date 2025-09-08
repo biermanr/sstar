@@ -454,14 +454,13 @@ def calc_segsites_per_window(vcf_path: pathlib.Path, win_len: int, win_step: int
     while start < vcf['variants/POS'][-1]:
         end = start + win_len
         in_window = (vcf['variants/POS'] >= start) & (vcf['variants/POS'] < end)
-        gt_window = vcf['calldata/GT'][in_window]
+        gt_window = vcf['calldata/GT'][in_window] #gt_window is a (n_variants, n_samples, ploidy) array of [0,1] values
         if gt_window.shape[0] == 0:
             segsites.append(0)
         else:
-            ac = allel.GenotypeArray(gt_window).count_alleles()
-            segsite_count = np.sum((ac[:, 1] > 0) & (ac[:, 1] < ac.sum(axis=1))) # NOT SURE WHAT'S HAPPENING HERE, might be correct
+            ac = allel.GenotypeArray(gt_window).count_alleles() #ac is a (n_variants, )
+            segsite_count = np.sum((ac[:, 0] > 0) & (ac[:, 1] > 0)) # count number of variants with at least one ref and one alt allele
             segsites.append(int(segsite_count))
         start += win_step
 
-    breakpoint() #NOTE
     return segsites
