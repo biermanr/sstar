@@ -434,33 +434,23 @@ def py2round(x, d=0):
     else: return 0.0
 
 
-def calc_segsites_per_window(vcf_path: pathlib.Path, win_len: int, win_step: int, sample_ids: List[str] = None) -> List[int]:
-    """Calculate the number of segregating sites per window.
-    
+def calc_segsites_in_window(vcf, chrom:str, start:int, end:int) -> int:
+    """Calculate the number of segregating sites in a given window.
+
     Args:
-        vcf_path (pathlib.Path): Path to the VCF file.
-        win_len (int): Length of the window.
-        win_step (int): Step size for the window.
-        sample_ids (list[str], optional): Set of sample IDs to include. If None, include all samples.
+        vcf (allel.VCF): VCF object containing genotype data.
+        chrom (str): Chromosome name.
+        start (int): Start position of the window.
+        end (int): End position of the window.
 
     Returns:
-        list[int]: List of number of segregating sites per window.
+        int: Number of segregating sites in the window.
     """
-    segsites = []
-
-    vcf = allel.read_vcf(vcf_path, samples=sample_ids)
-
-    start = 0
-    while start < vcf['variants/POS'][-1]:
-        end = start + win_len
-        in_window = (vcf['variants/POS'] >= start) & (vcf['variants/POS'] < end)
-        gt_window = vcf['calldata/GT'][in_window] #gt_window is a (n_variants, n_samples, ploidy) array of [0,1] values
-        if gt_window.shape[0] == 0:
-            segsites.append(0)
-        else:
-            ac = allel.GenotypeArray(gt_window).count_alleles() #ac is a (n_variants, )
-            segsite_count = np.sum((ac[:, 0] > 0) & (ac[:, 1] > 0)) # count number of variants with at least one ref and one alt allele
-            segsites.append(int(segsite_count))
-        start += win_step
-
-    return segsites
+    in_window = (vcf['variants/CHROM'] == chrom) & (vcf['variants/POS'] >= start) & (vcf['variants/POS'] < end)
+    gt_window = vcf['calldata/GT'][in_window] #gt_window is a (n_variants, n_samples, ploidy) array of [0,1] values
+    if gt_window.shape[0] == 0:
+        return 0
+    else:
+        ac = allel.GenotypeArray(gt_window).count_alleles() #ac is a (n_variants, )
+        segsite_count = np.sum((ac[:, 0] > 0) & (ac[:, 1] > 0)) # count number of variants with at least one ref and one alt allele
+        return int(segsite_count)

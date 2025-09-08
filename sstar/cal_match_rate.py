@@ -21,9 +21,10 @@ import numpy as np
 import time
 import pandas as pd
 from multiprocessing import Process, Queue
-from sstar.utils import read_data, py2round, read_mapped_region_file, cal_matchpct
+from sstar.utils import read_data, py2round, read_mapped_region_file, cal_matchpct, calc_segsites_in_window
 from dataclasses import dataclass
 import logging
+import pathlib
 
 import subprocess
 import demes
@@ -227,7 +228,7 @@ def _cal_match_pct_ind(data, tgt_ind_index, mapped_intervals, tgt_data, src_data
 ########################################################
 # TEMPORARILY ADDING archaic matchrate simulation code #
 ########################################################
-def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seeds):
+def archaic_matchrate_pvalue(vcf, threshold_fpath, matchrate_fpath, score_fpath, model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, mut_rate, rec_rate, output_dir, threads, seeds):
     """archaic_matchrate_pvalue: calculate p-values for archaic match rates
 
     Arguments:
@@ -270,19 +271,22 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
     logging.info(f"Mutation rate: {mut_rate}, recombination rate: {rec_rate}")
     logging.info(f"Output directory: {output_dir}, threads: {threads}, seeds: {seeds}")
 
-    # Use the input VCF file to get the distribution of the number of total segregating sites per region per sample.
-    # This is the TOTAL number of segregating sites, not just the S* SNPs.
+    allel_vcf = allel.read_vcf(vcf)
     snps_per_sample_per_region = {}
     with open(score_fpath) as f:
         f.readline() # Skip header
         for line in f:
             elements = line.strip().split('\t')
             chrom, start, end, sample, _s_star_score, _region_ind_SNP_number, S_star_SNP_number, _S_star_SNPs = elements
+
+            # Look in the original vcf file to count the number of segregating sites in this region
+            segsites = calc_segsites_in_window(allel_vcf, chrom, int(start), int(end))
+
             k = f"{sample}:{chrom}:{start}-{end}"
             if k in snps_per_sample_per_region:
                 raise ValueError(f"Duplicate region {k} found in score file {score_fpath}.")
-            
-            snps_per_sample_per_region[k] = int(S_star_SNP_number) if S_star_SNP_number != 'NA' else 0
+
+            snps_per_sample_per_region[k] = 650 #segsites #(NOTE for now just hardcoding segsites to be 650 for all regions)
 
     # Use the output of the `sstar matchrate` command to get the archaic match rates per sample per region
     # here's what the columns of the TSV file look like:
@@ -350,9 +354,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             significant_regions.append(significant_region)
 
     # Create a list of unique region-lengths and number of SNPs from the significant_regions
-    # RB NOTE AUG 30th 2025: currently iterating through S* SNPs, but should be iterating through segsites
-    # RB NOTE AUG 30th 2025: for now just hardcoding segsites to be 650
-    region_lengths_num_snps = [(r.end - r.start + 1, 650) for r in significant_regions]
+    region_lengths_num_snps = [(r.end - r.start + 1, r.snp_num) for r in significant_regions]
     unique_region_lengths_num_snps = list(set(region_lengths_num_snps))
 
     logging.info(f"Number of significant regions: {len(significant_regions)}")
@@ -384,7 +386,7 @@ def archaic_matchrate_pvalue(threshold_fpath, matchrate_fpath, score_fpath, mode
             seeds=seeds,
         )
 
-        # Determine the number of "S* SNPs" for each
+        # Determine the number of total SNPs for each
 
         # NOTE THIS IS STRANGELY SETUP WHERE IT LOOPS THROUGH THE SIGNIFICANT REGIONS
         # NOTE TO SEE WHICH ARE IN THIS NULL MATCHRATE SIMULATION AND THEN CALCULATES THE P-VALUE

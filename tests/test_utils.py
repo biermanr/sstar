@@ -165,12 +165,9 @@ def test_cal_matchpct(test_paths):
     assert hap2_match_pct == 0.068966
 
 
-def test_calc_segsites_per_window(test_paths):
+def test_calc_segsites_in_window(test_paths):
     vcf_path = test_paths.test_vcf_file
-    win_len = 10_000
-    win_step = 5_000
-    ids = None
+    vcf = allel.read_vcf(vcf_path)
 
-    segsites = utils.calc_segsites_per_window(vcf_path, win_len, win_step, ids)
-
-    assert segsites == [2, 2, 5, 5, 4, 5, 5, 4, 3, 2] #expected result based on the test VCF file
+    segsites = utils.calc_segsites_in_window(vcf, '21', 0, 10000)
+    assert segsites == 2

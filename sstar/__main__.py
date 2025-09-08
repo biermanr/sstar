@@ -34,6 +34,7 @@ def _run_quantile(args):
 def _run_archaic_match_rate_pvalue(args):
     from sstar.cal_match_rate import archaic_matchrate_pvalue
     archaic_matchrate_pvalue(
+        vcf=args.vcf,
         threshold_fpath=args.threshold_output,
         matchrate_fpath=args.matchrate_output,
         score_fpath=args.score_output,
@@ -149,6 +150,7 @@ def _s_star_cli_parser():
 
     # Arguments for matchrate p-value subcommand
     parser = subparsers.add_parser('matchrate-pvalue', help='calculate archaic matchrate p-values from simulated data without introgression')
+    parser.add_argument('--vcf', type=str, required=True, help='original input vcf')
     parser.add_argument('--threshold-output', type=str, required=True, help='output file from the `sstar threshold` command')
     parser.add_argument('--matchrate-output', type=str, required=True, help='output file from the `sstar matchrate` command')
     parser.add_argument('--score-output', type=str, required=True, help='output file from the `sstar score` command')
