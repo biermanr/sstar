@@ -16,7 +16,7 @@
 import allel
 import numpy as np
 import os
-from multiprocessing import Process, Queue
+from multiprocessing import Pool
 from sstar.utils import read_data, filter_data
 
 #@profile
@@ -97,42 +97,52 @@ def _cal_score(ref_data, tgt_data, samples, win_len, win_step, output, thread, m
     else:
         cleanup_on_sigterm()
  
-    res = []
-    # Use multiprocessing to calculate S* scores in different samples
-    in_queue, out_queue = Queue(), Queue()
-    workers = [Process(target=_cal_score_worker, args=(in_queue, out_queue, ref_data, tgt_data, 
-                       win_len, win_step, match_bonus, max_mismatch, mismatch_penalty)) for ii in range(thread)]
-    for s in range(len(samples)):
-        in_queue.put((s,samples[s]))
-
-    try:
-        for worker in workers:
-            worker.start()
-
-        for s in range(len(samples)):
-            item = out_queue.get()
-            if item != '': res.append(item)
+    # Convert complex genomic data structures to simple numpy arrays for pickling
+    serializable_ref_data = {}
+    serializable_tgt_data = {}
     
-        for worker in workers:
-            worker.terminate()
-    finally:
-        for worker in workers:
-            worker.join()
+    for c in ref_data.keys():
+        serializable_ref_data[c] = {
+            'GT': np.array(ref_data[c]['GT']),  # Convert GenotypeArray to numpy array
+            'POS': np.array(ref_data[c]['POS'])
+        }
+    
+    for c in tgt_data.keys():
+        serializable_tgt_data[c] = {
+            'GT': np.array(tgt_data[c]['GT']),  # Convert GenotypeArray to numpy array
+            'POS': np.array(tgt_data[c]['POS'])
+        }
+    
+    # Prepare arguments for each sample
+    sample_args = []
+    for s in range(len(samples)):
+        sample_args.append((s, samples[s], serializable_ref_data, serializable_tgt_data, win_len, win_step, match_bonus, max_mismatch, mismatch_penalty))
+    
+    # Use multiprocessing Pool to calculate S* scores in different samples
+    with Pool(processes=thread) as pool:
+        results = pool.starmap(_cal_score_worker, sample_args)
+    
+    # Flatten results (each worker returns a list of strings)
+    res = []
+    for result in results:
+        if result:  # Only add non-empty results
+            res.extend(result)
 
     header = 'chrom\tstart\tend\tsample\tS*_score\tregion_ind_SNP_number\tS*_SNP_number\tS*_SNPs'
     with open(output, 'w') as o:
         o.write(header+'\n')
-        o.write('\n'.join(res))
-        o.write('\n')
+        if res:
+            o.write('\n'.join(res))
+            o.write('\n')
 
-def _cal_score_worker(in_queue, out_queue, ref_data, tgt_data, win_len, win_step, match_bonus, max_mismatch, mismatch_penalty):
+def _cal_score_worker(s, sample_name, ref_data, tgt_data, win_len, win_step, match_bonus, max_mismatch, mismatch_penalty):
     """
     Description:
-        Worker function to calculate S* scores with multiprocessing.
+        Worker function to calculate S* scores for a single sample with multiprocessing.
 
     Arguments:
-        in_queue multiprocessing.Queue: multiprocessing.Queue instance to receive parameters from the manager.
-        out_queue multiprocessing.Queue: multiprocessing.Queue instance to send results back to the manager.
+        s int: Sample index.
+        sample_name str: Sample name.
         ref_data dict: Dictionary containing genotype data from the reference population.
         tgt_data dict: Dictionary containing genotype data from the target population.
         win_len int: Length of sliding windows.
@@ -140,24 +150,35 @@ def _cal_score_worker(in_queue, out_queue, ref_data, tgt_data, win_len, win_step
         match_bonus int: Bonus for matching genotypes of two different variants.
         max_mismatch int: Maximum genotype distance allowed.
         mismatch_penalty int: Penalty for mismatching genotypes of two different variants.
+    
+    Returns:
+        list: List of result strings for this sample.
     """
+    results = []
+    chr_names = tgt_data.keys()
+    
+    for c in chr_names:
+        tgt_gt = tgt_data[c]['GT']
+        tgt_pos = tgt_data[c]['POS']
+        ind = tgt_gt[:,s]
 
-    while True:
-        s, sample_name = in_queue.get()
-        chr_names = tgt_data.keys()
-        for c in chr_names:
-            tgt_gt = tgt_data[c]['GT']
-            tgt_pos = tgt_data[c]['POS']
-            ind = tgt_gt[:,s]
-
-            ref_gt = ref_data[c]['GT']
-            ref_pos = ref_data[c]['POS']
-            ref_sub_pos = ref_pos[~np.all(ref_gt.is_hom_ref(), axis=1)]
-            # Assume the ref allele is 0 and the alt allele is 1
-            tgt_sub_gt = tgt_gt[~ind.is_hom_ref()][:,s]
-            tgt_sub_pos = tgt_pos[~ind.is_hom_ref()]
-            res = _cal_score_ind(c, sample_name, ref_sub_pos, tgt_sub_pos, tgt_sub_gt, win_step, win_len, match_bonus, max_mismatch, mismatch_penalty)
-            out_queue.put('\n'.join(res))
+        ref_gt = ref_data[c]['GT']
+        ref_pos = ref_data[c]['POS']
+        
+        # Convert from GenotypeArray method to numpy array operations
+        # is_hom_ref() equivalent: check if both alleles are 0
+        ref_hom_ref = np.all(ref_gt == 0, axis=2)  # Shape: (variants, samples)
+        ref_sub_pos = ref_pos[~np.all(ref_hom_ref, axis=1)]
+        
+        # For target individual: check if homozygous reference (both alleles 0)
+        ind_hom_ref = np.all(ind == 0, axis=1)  # Shape: (variants,)
+        tgt_sub_gt = tgt_gt[~ind_hom_ref][:,s]
+        tgt_sub_pos = tgt_pos[~ind_hom_ref]
+        
+        res = _cal_score_ind(c, sample_name, ref_sub_pos, tgt_sub_pos, tgt_sub_gt, win_step, win_len, match_bonus, max_mismatch, mismatch_penalty)
+        results.extend(res)
+    
+    return results
 
 #@profile
 def _cal_score_ind(chr_name, sample_name, ref_pos, tgt_pos, tgt_gt, win_step, win_len, match_bonus, max_mismatch, mismatch_penalty):
