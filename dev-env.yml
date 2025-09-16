@@ -20,4 +20,4 @@ dependencies:
         - r-essentials=4.1
         - rpy2
         - pip:
-                - sstar
+                - -e .

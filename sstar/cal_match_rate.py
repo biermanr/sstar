@@ -487,6 +487,49 @@ def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output
             rec_rate = rec_rate_list[i]
             o.write(f'{mut_rate}\t{rec_rate}\n')
 
+def _run_msprime_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds):
+    """
+    Description:
+        Helper function for running msprime simulation.
+    """
+    import msprime
+
+    graph = demes.load(model)
+    demography = msprime.Demography.from_demes(graph)
+
+    tgt_pop = demography.populations[tgt_index-1]
+    anc_pop = demography.populations[anc_index-1]
+    samples = [
+        msprime.SampleSet(anc_size, population=anc_pop.name, ploidy=2),
+        msprime.SampleSet(tgt_size, population=tgt_pop.name, ploidy=2),
+    ]
+
+    # Set up the simulation parameters
+    ts = msprime.sim_ancestry(
+        samples=samples,
+        demography=demography,
+        sequence_length=seq_len,
+        recombination_rate=rec_rate,
+        num_replicates=nreps,
+        record_migrations=True,
+    )
+
+    # Overlay mutations
+    ts_mutated = msprime.sim_mutations(ts, rate=mut_rate)
+
+    # Save or process the mutated tree sequences as needed (placeholder)
+    # For example, write to VCF or compute statistics
+    # Collect match rates or other statistics from the mutated tree sequences
+    match_rates = []
+    for ts in ts_mutated:
+        # Placeholder: compute or extract match rate statistics from ts
+        # For now, append a placeholder value (e.g., 0.0)
+        match_rates.append(0.0)
+
+    # Return the list of match rates
+    return match_rates
+
+
 def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds):
     """
     Description
@@ -555,7 +598,6 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt
     for snp_num in snp_num_list:
         in_queue.put(snp_num)
 
-    # NOTE THE CODE BELOW ONLY RUNS ONCE, IT'S NOT USING MULTIPROCESSING
     ms_output_paths = []
     try:
         for worker in workers:
@@ -571,6 +613,7 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, anc_index, anc_size, tgt
     # Calculate the archaic match rates from the .ms file
     sim_archaic_matchrates = py_cal_match_pct_ind_for_simulation(ms_output_paths[0], nsamp, anc_list, tgt_list, ploidy=2)
     return sim_archaic_matchrates
+
 
 def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, anc_list, tgt_list, seeds):
     """
@@ -700,7 +743,7 @@ def py_cal_match_pct_ind_for_simulation(output_ms, nsamp, anc_list, tgt_list, pl
     
     # Process file in chunks - read line by line instead of loading entire file
     num_init_headers = 2 # minus 1 because of 0-index
-    num_per_sim_headers = 5
+    num_per_sim_headers = 4 #5 <-- depends on if setting the segsites with -s in ms command
     num_headers = num_init_headers + num_per_sim_headers
     spacing = nsamp + num_per_sim_headers
 

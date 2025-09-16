@@ -1,4 +1,4 @@
-name: sstar
+name: sstar-build
 channels:
         - conda-forge
         - bioconda
@@ -18,4 +18,4 @@ dependencies:
         - r-essentials=4.1
         - rpy2
         - pip:
-                - sstar
+                - -e .

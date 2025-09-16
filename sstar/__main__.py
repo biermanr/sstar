@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse, os, sys, signal
+import argparse, os, sys, signal, pathlib
 
 
 def _set_sigpipe_handler():
@@ -21,6 +21,16 @@ def _set_sigpipe_handler():
         # Set signal handler for SIGPIPE to quietly kill the program.
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
+def _run_simulate(args):
+    from sstar.simulate import MSPrimeSimulator
+    msprime_simulator = MSPrimeSimulator(demes_file=args.demes_file)
+    msprime_simulator.define_sample(role="ref", population=args.ref_pop, num_samples=args.ref_size)
+    msprime_simulator.define_sample(role="tgt", population=args.tgt_pop, num_samples=args.tgt_size)
+    msprime_simulator.define_sample(role="src", population=args.src_pop, num_samples=args.src_size, time=args.src_sample_gen)
+    msprime_simulator.define_params(mut_rate=args.mut_rate, recomb_rate=args.rec_rate, seq_length=args.seq_length)
+    msprime_simulator.simulate(random_seed=args.random_seed)
+    msprime_simulator.save(args.output_dir)
+    
 
 def _run_score(args):
     from sstar.cal_s_star import cal_s_star
@@ -115,6 +125,24 @@ def _s_star_cli_parser():
     top_parser = argparse.ArgumentParser()
     subparsers = top_parser.add_subparsers(dest="subcommand")
     subparsers.required = True
+
+    # Arguments for sim-vcf subcommand
+    parser = subparsers.add_parser('sim-vcf', help='simulate a VCF file using msprime and demes')
+    parser.add_argument('--demes-file', type=pathlib.Path, required=True, help='Demes YAML file describing the demographic model')
+    parser.add_argument('--output-dir', type=pathlib.Path, required=True, help='Directory to save the output files')
+    parser.add_argument('--ref-pop', type=str, required=True, help='Name of the reference population as defined in the demography')
+    parser.add_argument('--ref-size', type=int, required=True, help='Number of diploid samples to draw from the reference population')
+    parser.add_argument('--tgt-pop', type=str, required=True, help='Name of the target population as defined in the demography')
+    parser.add_argument('--tgt-size', type=int, required=True, help='Number of diploid samples to draw from the target population')
+    parser.add_argument('--src-pop', type=str, required=True, help='Name of the source population as defined in the demography')
+    parser.add_argument('--src-size', type=int, required=True, help='Number of diploid samples to draw from the source population')
+    parser.add_argument('--src-sample-gen', type=int, required=True, help='Time in generations before present to sample from the source population')
+    parser.add_argument('--seq-length', type=int, default=20_000_000, help='Length of the genomic sequence to simulate (in base pairs)')
+    parser.add_argument('--mut-rate', type=float, default=1.4e-8, help='Mutation rate per base per generation')
+    parser.add_argument('--rec-rate', type=float, default=1e-8, help='Recombination rate per base per generation')
+    parser.add_argument('--random-seed', type=int, required=False, help='Random seed for reproducibility')
+    parser.set_defaults(runner=_run_simulate)
+
 
     # Arguments for score subcommand
     parser = subparsers.add_parser('score', help='calculate S* scores from VCF files')

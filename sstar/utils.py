@@ -445,6 +445,8 @@ def calc_segsites_in_window(vcf, chrom:str, start:int, end:int) -> int:
 
     Returns:
         int: Number of segregating sites in the window.
+
+    NOTE THIS FUNCTION IS VERY SLOW
     """
     in_window = (vcf['variants/CHROM'] == chrom) & (vcf['variants/POS'] >= start) & (vcf['variants/POS'] < end)
     gt_window = vcf['calldata/GT'][in_window] #gt_window is a (n_variants, n_samples, ploidy) array of [0,1] values

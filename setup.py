@@ -33,6 +33,7 @@ setup(
         "rpy2",
         "scikit-allel",
         "scipy",
+        "msprime",
     ],
     entry_points={"console_scripts": ["sstar=sstar.__main__:main"]},
 )

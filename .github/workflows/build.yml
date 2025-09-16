@@ -5,25 +5,19 @@ on: [push, pull_request]
 jobs:
   build-linux:
     runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: ["ubuntu-latest"]
-        python-version: ["3.9", "3.12"]
-      max-parallel: 5
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+    - name: Checkout
+      uses: actions/checkout@v4
+
     - name: Add micromamba to system path
       uses: mamba-org/setup-micromamba@v2
       with:
-        environment-name: sstar
+        environment-name: sstar-build
         environment-file: build-env.yml
+
     - name: Test with pytest
       run: |
         export R_LIBS=${CONDA_PREFIX}/lib/R/library
-        micromamba run -n sstar pytest --cov=. --cov-report term-missing
-        micromamba run -n sstar coverage xml
+        micromamba run -n sstar-build pytest --cov=. --cov-report term-missing
+        micromamba run -n sstar-build coverage xml
