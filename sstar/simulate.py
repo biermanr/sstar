@@ -77,12 +77,12 @@ class MSPrimeSimulator:
         self.ts.dump(output_dir / "sim_input.trees")
 
         with open(output_dir / "sim_input.vcf", 'w') as f_out:
-            self.ts.write_vcf(f_out)
+            self.ts.write_vcf(f_out, allow_position_zero=True)
 
         # Write the role sample lists to {role}.ind.list
         i = 0
         for role, sample_set in self.roles.items():
             with open(output_dir / f"sim_input.{role}.ind.list", 'w') as f_out:
-                for _ in range(sample_set.num_samples * sample_set.ploidy):
+                for _ in range(sample_set.num_samples):
                     f_out.write(f"tsk_{i}\n")
                     i += 1

@@ -26,7 +26,7 @@ def _run_simulate(args):
     msprime_simulator = MSPrimeSimulator(demes_file=args.demes_file)
     msprime_simulator.define_sample(role="ref", population=args.ref_pop, num_samples=args.ref_size)
     msprime_simulator.define_sample(role="tgt", population=args.tgt_pop, num_samples=args.tgt_size)
-    msprime_simulator.define_sample(role="src", population=args.src_pop, num_samples=args.src_size, time=args.src_sample_gen)
+    msprime_simulator.define_sample(role="nean_src", population=args.src_pop, num_samples=args.src_size, time=args.src_sample_gen)
     msprime_simulator.define_params(mut_rate=args.mut_rate, recomb_rate=args.rec_rate, seq_length=args.seq_length)
     msprime_simulator.simulate(random_seed=args.random_seed)
     msprime_simulator.save(args.output_dir)
@@ -43,25 +43,24 @@ def _run_quantile(args):
 
 def _run_archaic_match_rate_pvalue(args):
     from sstar.cal_match_rate import archaic_matchrate_pvalue
+
+    # TODO clean this up by making a class to organize Samples and Parameters
     archaic_matchrate_pvalue(
-        vcf=args.vcf,
-        threshold_fpath=args.threshold_output,
-        matchrate_fpath=args.matchrate_output,
-        score_fpath=args.score_output,
-        model=args.model,
-        ms_dir=args.ms_dir,
-        N0=args.N0,
-        nsamp=args.nsamp,
-        nreps=args.nreps,
-        anc_index=args.anc_index,
-        anc_size=args.anc_size,
-        tgt_index=args.tgt_index,
+        demes_file=args.demes_file,
+        obs_matchrate_path=args.matchrate_output,
+        output_dir=args.output_dir,
+        num_sims=args.num_sims,
+        ref_pop=args.ref_pop,
+        ref_size=args.ref_size,
+        tgt_pop=args.tgt_pop,
         tgt_size=args.tgt_size,
+        src_pop=args.src_pop,
+        src_size=args.src_size,
+        src_sample_gen=args.src_sample_gen,
         mut_rate=args.mut_rate,
         rec_rate=args.rec_rate,
-        output_dir=args.output_dir,
+        seq_length=args.seq_length,
         threads=args.threads,
-        seeds=args.seeds,
     )
 
 def _run_threshold(args):
@@ -178,23 +177,20 @@ def _s_star_cli_parser():
 
     # Arguments for matchrate p-value subcommand
     parser = subparsers.add_parser('matchrate-pvalue', help='calculate archaic matchrate p-values from simulated data without introgression')
-    parser.add_argument('--vcf', type=str, required=True, help='original input vcf')
-    parser.add_argument('--threshold-output', type=str, required=True, help='output file from the `sstar threshold` command')
-    parser.add_argument('--matchrate-output', type=str, required=True, help='output file from the `sstar matchrate` command')
-    parser.add_argument('--score-output', type=str, required=True, help='output file from the `sstar score` command')
-    parser.add_argument('--model', type=str, required=True, help='demographic model without introgression for simulation in Demes YAML format')
-    parser.add_argument('--ms-dir', type=str, dest='ms_dir', required=True, help='directory for the ms program for simulation')
-    parser.add_argument('--N0', type=int, required=True, help='N0 used in ms simulation')
-    parser.add_argument('--nsamp', type=int, required=True, help='sample size (haploid) used in ms simulation')
-    parser.add_argument('--nreps', type=int, required=True, help='number of replicates used in ms simulation')
-    parser.add_argument('--seeds', type=int, nargs=3, default=None, help='three random seed numbers used in ms simulation; default: None')
-    parser.add_argument('--anc-index', type=int, dest='anc_index', required=True, help='index of the ancestral population in the demographic model (start from 1)')
-    parser.add_argument('--anc-size', type=int, dest='anc_size', required=True, help='sample size (haploid) of the ancestral population')
-    parser.add_argument('--tgt-index', type=int, dest='tgt_index', required=True, help='index of the target population in the demographic model (start from 1)')
-    parser.add_argument('--tgt-size', type=int, dest='tgt_size', required=True, help='sample size (haploid) of the target population')
-    parser.add_argument('--mut-rate', type=float, dest='mut_rate', required=True, help='mutation rate per generation per base')
-    parser.add_argument('--rec-rate', type=float, dest='rec_rate', required=True, help='recombination rate per generation per base')
-    parser.add_argument('--output-dir', type=str, dest='output_dir', required=True, help='directory for the output files')
+    parser.add_argument('--demes-file', type=pathlib.Path, required=True, help='Demes YAML file describing the demographic model')
+    parser.add_argument('--matchrate-output', type=pathlib.Path, required=True, help='output file from the `sstar matchrate` command')
+    parser.add_argument('--output-dir', type=pathlib.Path, dest='output_dir', required=True, help='directory for the output files')
+    parser.add_argument('--num-sims', type=int, help='number of simulations to run to estimate matchrate p-values')
+    parser.add_argument('--ref-pop', type=str, required=True, help='Name of the reference population as defined in the demography')
+    parser.add_argument('--ref-size', type=int, required=True, help='Number of diploid samples to draw from the reference population')
+    parser.add_argument('--tgt-pop', type=str, required=True, help='Name of the target population as defined in the demography')
+    parser.add_argument('--tgt-size', type=int, required=True, help='Number of diploid samples to draw from the target population')
+    parser.add_argument('--src-pop', type=str, required=True, help='Name of the source population as defined in the demography')
+    parser.add_argument('--src-size', type=int, required=True, help='Number of diploid samples to draw from the source population')
+    parser.add_argument('--src-sample-gen', type=int, required=True, help='Time in generations before present to sample from the source population')
+    parser.add_argument('--mut-rate', type=float, help='Mutation rate per base per generation')
+    parser.add_argument('--rec-rate', type=float, help='Recombination rate per base per generation')
+    parser.add_argument('--seq-length', type=int, help='Length of the genomic sequence to simulate')
     parser.add_argument('--threads', type=int, default=1, help='number of threads')
     parser.set_defaults(runner=_run_archaic_match_rate_pvalue)
 
