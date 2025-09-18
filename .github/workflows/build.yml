@@ -26,7 +26,7 @@ jobs:
         micromamba run -n sstar-build coverage combine
         micromamba run -n sstar-build coverage report -m
         micromamba run -n sstar-build coverage xml
-        micromamba run -n sstar-build coverage-badge -o coverage.svg
+        micromamba run -n sstar-build coverage-badge -f -o coverage.svg
 
     - name: Commit coverage.svg and push
       run: |
