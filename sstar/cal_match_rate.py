@@ -133,13 +133,6 @@ def _cal_tgt_match_pct_manager(data, mapped_intervals, samples, tgt_samples, src
         res list: Match percents for target populations.
     """
 
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     res = []
     in_queue, out_queue = Queue(), Queue()
     workers = [Process(target=_cal_tgt_match_pct_worker, args=(in_queue, out_queue, mapped_intervals, tgt_data, src_data, src_samples, len(tgt_samples))) for ii in range(thread)]

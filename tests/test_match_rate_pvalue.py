@@ -12,10 +12,11 @@ def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
     output_dir = tmp_path
     num_sims = 2
 
+
     # NOTE not sure I set the correct ref/tgt/src populations here
     match_rate_pvalue.archaic_matchrate_pvalue(
         demes_file=test_paths.model_file,
-        obs_matchrate_path=test_paths.expected_match_rate_file, #NOTE this if for Nean model. Need to make new test data
+        obs_matchrate_path=test_paths.expected_match_rate_file, #NOTE this is for Nean model. Need to make new test data
         output_dir=output_dir,
         num_sims=num_sims,
         ref_pop="Central",
@@ -30,6 +31,9 @@ def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
         seq_length=1000,
         threads=2,
     )
+
+    # TODO currently hardcoded output path
+    assert (output_dir / "observed_matchrate_pvalues.txt").exists()
 
     # Check that output files are created
     md5sums = collections.defaultdict(set)

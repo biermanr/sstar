@@ -71,13 +71,6 @@ def _cal_score(ref_data, tgt_data, samples, win_len, win_step, output, thread, m
         mismatch_penalty int: Penalty for mismatching genotypes of two different variants.
     """
   
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
- 
     # Convert complex genomic data structures to simple numpy arrays for pickling
     serializable_ref_data = {}
     serializable_tgt_data = {}

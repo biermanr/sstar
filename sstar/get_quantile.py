@@ -134,13 +134,6 @@ def _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt
             for i in range(tgt_size):
                 o.write(f'ms_{i}\n')
        
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     in_queue, out_queue = Queue(), Queue()
     workers = [Process(target=_run_ms_simulation_worker, args=(in_queue, out_queue, output_dir, rates, ms_exec, nsamp, nreps, seq_len, ms_params, ref_list, tgt_list, seeds)) for ii in range(thread)]
  

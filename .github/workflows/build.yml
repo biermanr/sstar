@@ -2,6 +2,9 @@ name: build
 
 on: [push, pull_request]
 
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -16,8 +19,19 @@ jobs:
         environment-name: sstar-build
         environment-file: build-env.yml
 
-    - name: Test with pytest
+    - name: Test with pytest, coverage, and generate coverage reports
       run: |
         export R_LIBS=${CONDA_PREFIX}/lib/R/library
-        micromamba run -n sstar-build pytest --cov=. --cov-report term-missing
+        micromamba run -n sstar-build coverage run -m pytest
+        micromamba run -n sstar-build coverage combine
+        micromamba run -n sstar-build coverage report -m
         micromamba run -n sstar-build coverage xml
+        micromamba run -n sstar-build coverage-badge -o coverage.svg
+
+    - name: Commit coverage.svg and push
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add coverage.svg
+        git commit -m "Updated coverage.svg"
+        git push

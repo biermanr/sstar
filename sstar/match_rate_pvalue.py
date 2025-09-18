@@ -2,6 +2,7 @@ import pathlib
 import logging
 from multiprocessing import Pool
 import os
+import numpy as np
 
 from .simulate import MSPrimeSimulator
 from .cal_s_star import _cal_score_worker
@@ -34,22 +35,6 @@ def archaic_matchrate_pvalue(*,
 
     Then combine the results from all simulations to calculate p-values for observed match rates.
     """
-    # NOTE SETUP LOGGING SOMEWHERE ELSE
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        level=logging.INFO,
-    )
-
-    logging.info("Calculating null match rates from simulated data without introgression...")
-    logging.info(f"Using observed match rate file: {obs_matchrate_path}")
-    logging.info(f"Using demographic file: {demes_file}")
-    logging.info(f"Using number of simulations: {num_sims}")
-    logging.info(f"Reference population: {ref_pop}, size: {ref_size}")
-    logging.info(f"Target population: {tgt_pop}, size: {tgt_size}")
-    logging.info(f"Source population: {src_pop}, size: {src_size}, sampled {src_sample_gen} generations ago")
-    logging.info(f"Mutation rate: {mut_rate}, recombination rate: {rec_rate}")
-    logging.info(f"Output directory: {output_dir}, threads: {threads}")
-
     # Create output directory if it doesn't exist
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,16 +53,51 @@ def archaic_matchrate_pvalue(*,
             _run_sstar_sim_vcf,
             [(msprime_simulator, output_dir, sim_num) for sim_num in range(num_sims)]
         )
+        p.close()
+        p.join()
 
     # Run score calculations with a multiprocessing pool
     with Pool(processes=processes) as p:
         score_paths = p.map(_run_sstar_score, sim_vcf_paths)
+        p.close()
+        p.join()
 
     # Run match rate calculations with a multiprocessing pool
     with Pool(processes=processes) as p:
         matchrate_paths = p.map(_run_sstar_matchrate, score_paths)
+        p.close()
+        p.join()
 
-    # TODO Read all matchrate results and calculate p-values for observed match rates
+    # Read all matchrate results and calculate p-values for observed match rates
+    sim_matchrates = []
+    for matchrate_path in matchrate_paths:
+        with open(matchrate_path, 'r') as f:
+            next(f)  # Skip header
+            for line in f:
+                fields = line.strip().split('\t')
+                _chrom, _start, _end, _sample, match_rate, _src_sample = fields
+                sim_matchrates.append(float(match_rate))
+
+    sim_matchrates = np.sort(sim_matchrates)
+    num_matchrates = len(sim_matchrates)
+
+    #breakpoint()
+
+    # Read observed match rates, calculate p-values, and write to output file
+    out_path = output_dir / "observed_matchrate_pvalues.txt" # TODO change hardcoded name later
+    with open(obs_matchrate_path, 'r') as f_in, open(out_path, 'w') as f_out:
+        header = f_in.readline().strip()
+        f_out.write(header + '\tp_value\n')
+        for line in f_in:
+            fields = line.strip().split('\t')
+            _chrom, _start, _end, _sample, obs_match_rate, _src_sample = fields
+            obs_match_rate = float(obs_match_rate)
+
+            # using np.searchsorted for speed
+            rank = np.searchsorted(sim_matchrates, obs_match_rate, side='right')
+            p_value = 1.0 - (rank / num_matchrates)
+
+            f_out.write(line.strip() + f'\t{p_value}\n')
 
 
 def _run_sstar_sim_vcf(simulator: MSPrimeSimulator, out_simulation_dir: pathlib.Path, sim_num: int) -> pathlib.Path:
