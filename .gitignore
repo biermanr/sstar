@@ -11,4 +11,5 @@ examples/snakepipe/.snakemake/*
 examples/snakepipe/logs_slurm/*
 tests/results/simulation
 .coverage
+coverage.xml
 site
