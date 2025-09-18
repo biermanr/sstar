@@ -48,25 +48,6 @@ def cal_s_star(vcf, ref_ind_file, tgt_ind_file, anc_allele_file, output, win_len
         variants_not_in_ref = np.sum(ref_data[c]['GT'].is_hom_ref(),axis=1) == len(ref_samples)
         tgt_data = filter_data(tgt_data, c, variants_not_in_ref)
 
-    #header = 'chrom\tsample\tstart\tend\ttotal_SNP_number\tS*_SNP_number\tS*_score\tS*_SNPs'
-    #o = open(output, 'w')
-    #o.write(header+'\n')
-    #for s in range(len(tgt_samples)):
-    #    chr_names = tgt_data.keys()
-    #    for c in chr_names:
-    #        tgt_gt = tgt_data[c]['GT']
-    #        tgt_pos = tgt_data[c]['POS']
-    #        ind = tgt_gt[:,s]
-
-    #        ref_gt = ref_data[c]['GT']
-    #        ref_pos = ref_data[c]['POS']
-    #        ref_sub_pos = ref_pos[~np.all(ref_gt.is_hom_ref(), axis=1)]
-            # Assume the ref allele is 0 and the alt allele is 1
-    #        tgt_sub_gt = tgt_gt[~ind.is_hom_ref()][:,s]
-    #        tgt_sub_pos = tgt_pos[~ind.is_hom_ref()]
-    #        res = _cal_score_ind(c, tgt_samples[s], ref_sub_pos, tgt_sub_pos, tgt_sub_gt, win_step, win_len)
-    #        o.write('\n'.join(res))
-    #o.close()
 
     if thread > 1: thread = min(os.cpu_count()-1, len(tgt_samples), thread)
 
@@ -138,7 +119,7 @@ def _cal_score(ref_data, tgt_data, samples, win_len, win_step, output, thread, m
 def _cal_score_worker(s, sample_name, ref_data, tgt_data, win_len, win_step, match_bonus, max_mismatch, mismatch_penalty):
     """
     Description:
-        Worker function to calculate S* scores for a single sample with multiprocessing.
+        Worker function to calculate S* scores for a single sample
 
     Arguments:
         s int: Sample index.

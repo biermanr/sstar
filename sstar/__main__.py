@@ -89,8 +89,8 @@ def _add_mapped_args(parser):
 
 
 def _add_window_args(parser):
-    parser.add_argument('--win-len', type=int, dest='win_len', default=50000, help='length of the window to calculate S* scores; default: 50000')
-    parser.add_argument('--win-step', type=int, dest='win_step', default=10000, help='step size for moving windows along genomes; default: 10000')
+    parser.add_argument('--win-len', type=int, dest='win_len', default=50_000, help='length of the window to calculate S* scores; default: 50,000')
+    parser.add_argument('--win-step', type=int, dest='win_step', default=10_000, help='step size for moving windows along genomes; default: 10,000')
 
 
 def _add_ref_ind_args(parser):

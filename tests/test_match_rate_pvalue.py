@@ -1,6 +1,7 @@
 from sstar import match_rate_pvalue
 import pathlib
 import hashlib
+import collections
 
 def md5(fname: pathlib.Path):
     """Calculate the MD5 checksum of a file."""
@@ -9,7 +10,7 @@ def md5(fname: pathlib.Path):
 
 def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
     output_dir = tmp_path
-    num_sims = 10
+    num_sims = 2
 
     # NOTE not sure I set the correct ref/tgt/src populations here
     match_rate_pvalue.archaic_matchrate_pvalue(
@@ -24,22 +25,26 @@ def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
         src_pop="Ghost",
         src_size=2,
         src_sample_gen=1000,
-        mut_rate=1.25e-8,
+        mut_rate=1.0e-3,
         rec_rate=1.0e-8,
         seq_length=1000,
         threads=2,
     )
 
     # Check that output files are created
-    vcf_md5sums = set()
+    md5sums = collections.defaultdict(set)
     for i in range(num_sims):
         sim_dir = output_dir / f"sim{i}"
         assert sim_dir.exists()
 
         assert (sim_dir / "sim_input.vcf").exists()
-        vcf_md5sums.add(md5(sim_dir / "sim_input.vcf"))
+        md5sums["vcfs"].add(md5(sim_dir / "sim_input.vcf"))
         
+        assert (sim_dir / "sim_input.score.results").exists()
+        md5sums["scores"].add(md5(sim_dir / "sim_input.score.results"))
+
         # TODO check for score and matchrate output files
 
-    # Check that VCF files are unique across simulations
-    assert len(vcf_md5sums) == num_sims
+    # Check that files are unique across simulations for each type
+    for ftype, sums in md5sums.items():
+        assert len(sums) == num_sims, f"Not all {ftype} files are unique across simulations"

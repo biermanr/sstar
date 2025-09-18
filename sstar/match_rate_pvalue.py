@@ -4,6 +4,8 @@ from multiprocessing import Pool
 import os
 
 from .simulate import MSPrimeSimulator
+from .cal_s_star import _cal_score_worker
+from .utils import read_data
 
 def archaic_matchrate_pvalue(*,
                              demes_file: pathlib.Path,
@@ -57,15 +59,18 @@ def archaic_matchrate_pvalue(*,
     msprime_simulator.define_sample(role="nean_src", population=src_pop, num_samples=src_size, time=src_sample_gen)
     msprime_simulator.define_params(mut_rate=mut_rate, recomb_rate=rec_rate, seq_length=seq_length)
 
+    processes = max(1, min(os.cpu_count()-1, threads))
+
     # Run simulations with a multiprocessing pool
-    with Pool(processes=min(threads, os.cpu_count()-1)) as p:
-        p.starmap(
+    with Pool(processes=processes) as p:
+        sim_vcf_paths = p.starmap(
             _run_sstar_sim_vcf,
             [(msprime_simulator, output_dir, sim_num) for sim_num in range(num_sims)]
         )
 
-
     # TODO Run score calculations with a multiprocessing pool
+    with Pool(processes=processes) as p:
+        score_paths = p.map(_run_sstar_score, sim_vcf_paths)
 
     # TODO Run match rate calculations with a multiprocessing pool
 
@@ -89,17 +94,34 @@ def _run_sstar_sim_vcf(simulator: MSPrimeSimulator, out_simulation_dir: pathlib.
     return out_simulation_dir / "sim_input.vcf" #TODO change hardcoded name later
 
 
-#TODO, use this function later
-#def _run_sstar_score():
-#    cal_s_star(
-#        vcf=vcf_path,
-#        ref_ind_file=ref_ind_file,
-#        tgt_ind_file=tgt_ind_file,
-#        anc_allele_file=anc_allele_file,
-#        output=score_output,
-#        window_size=window_size,
-#        step_size=step_size,
-#        min_snp=min_snp,
-#        threads=threads,
-#    )
-#    pass
+def _run_sstar_score(vcf_path: pathlib.Path):
+
+    # TODO change hardcoded names later
+    ref_ind_file = vcf_path.parent / "sim_input.ref.ind.list"
+    tgt_ind_file = vcf_path.parent / "sim_input.tgt.ind.list"
+    out_file = vcf_path.parent / "sim_input.score.results" # TODO change hardcoded name later
+
+    # NOTE the high-level `cal_s_star` function does it's own multiprocessing internally
+    # NOTE so we can't call it here since we're already in a multiprocessing pool.
+    # NOTE we get error `AssertionError: daemonic processes are not allowed to have children`
+    # NOTE so instead we call the worker function directly here, once per target sample
+    # NOTE and collect the score results
+
+    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(str(vcf_path), ref_ind_file, tgt_ind_file, None, None)
+    win_len = 50_000            # TODO set as parameter
+    win_step = 10_000           # TODO set as parameter
+    match_bonus = 5_000         # TODO set as parameter
+    max_mismatch = 5            # TODO set as parameter
+    mismatch_penalty = -10_000  # TODO set as parameter
+
+    # TODO this is largely duplicate code to whats in cal_s_star, refactor into a shared function
+    with open(out_file, 'w') as out:
+        header = 'chrom\tstart\tend\tsample\tS*_score\tregion_ind_SNP_number\tS*_SNP_number\tS*_SNPs'
+        out.write(header+'\n')
+
+        for s, sample_name in enumerate(tgt_samples):
+            score_lines = _cal_score_worker(s, sample_name, ref_data, tgt_data, win_len, win_step, match_bonus, max_mismatch, mismatch_penalty)
+            for score in score_lines:
+                out.write(score + '\n')
+
+    return out_file
