@@ -43,7 +43,8 @@ def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
         assert (sim_dir / "sim_input.score.results").exists()
         md5sums["scores"].add(md5(sim_dir / "sim_input.score.results"))
 
-        # TODO check for score and matchrate output files
+        assert (sim_dir / "sim_input.matchrate.results").exists()
+        md5sums["matchrates"].add(md5(sim_dir / "sim_input.matchrate.results"))
 
     # Check that files are unique across simulations for each type
     for ftype, sums in md5sums.items():

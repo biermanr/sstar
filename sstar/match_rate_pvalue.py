@@ -5,6 +5,7 @@ import os
 
 from .simulate import MSPrimeSimulator
 from .cal_s_star import _cal_score_worker
+from .cal_match_rate import _cal_match_pct_ind, _read_score_file
 from .utils import read_data
 
 def archaic_matchrate_pvalue(*,
@@ -56,7 +57,7 @@ def archaic_matchrate_pvalue(*,
     msprime_simulator = MSPrimeSimulator(demes_file=demes_file)
     msprime_simulator.define_sample(role="ref", population=ref_pop, num_samples=ref_size)
     msprime_simulator.define_sample(role="tgt", population=tgt_pop, num_samples=tgt_size)
-    msprime_simulator.define_sample(role="nean_src", population=src_pop, num_samples=src_size, time=src_sample_gen)
+    msprime_simulator.define_sample(role="src", population=src_pop, num_samples=src_size, time=src_sample_gen)
     msprime_simulator.define_params(mut_rate=mut_rate, recomb_rate=rec_rate, seq_length=seq_length)
 
     processes = max(1, min(os.cpu_count()-1, threads))
@@ -68,11 +69,13 @@ def archaic_matchrate_pvalue(*,
             [(msprime_simulator, output_dir, sim_num) for sim_num in range(num_sims)]
         )
 
-    # TODO Run score calculations with a multiprocessing pool
+    # Run score calculations with a multiprocessing pool
     with Pool(processes=processes) as p:
         score_paths = p.map(_run_sstar_score, sim_vcf_paths)
 
-    # TODO Run match rate calculations with a multiprocessing pool
+    # Run match rate calculations with a multiprocessing pool
+    with Pool(processes=processes) as p:
+        matchrate_paths = p.map(_run_sstar_matchrate, score_paths)
 
     # TODO Read all matchrate results and calculate p-values for observed match rates
 
@@ -94,7 +97,7 @@ def _run_sstar_sim_vcf(simulator: MSPrimeSimulator, out_simulation_dir: pathlib.
     return out_simulation_dir / "sim_input.vcf" #TODO change hardcoded name later
 
 
-def _run_sstar_score(vcf_path: pathlib.Path):
+def _run_sstar_score(vcf_path: pathlib.Path) -> pathlib.Path:
 
     # TODO change hardcoded names later
     ref_ind_file = vcf_path.parent / "sim_input.ref.ind.list"
@@ -125,3 +128,46 @@ def _run_sstar_score(vcf_path: pathlib.Path):
                 out.write(score + '\n')
 
     return out_file
+
+
+def _run_sstar_matchrate(score_path: pathlib.Path) -> pathlib.Path:
+
+    # TODO change hardcoded names later
+    vcf_path = score_path.parent / "sim_input.vcf"
+    ref_ind_file = score_path.parent / "sim_input.ref.ind.list"
+    tgt_ind_file = score_path.parent / "sim_input.tgt.ind.list"
+    anc_ind_file = score_path.parent / "sim_input.src.ind.list"
+    matchrate_path = score_path.parent / "sim_input.matchrate.results"
+
+    # NOTE similar to scoring, the high-level `cal_match_pct` function does it's own multiprocessing internally
+    # NOTE so we can't call it here since we're already in a multiprocessing pool. Instead we'll
+    # NOTE call the `_cal_match_pct_ind` function directly here, once per target sample
+
+    ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(str(vcf_path), ref_ind_file, tgt_ind_file, anc_ind_file, None)
+
+    chr_names = tgt_data.keys()
+
+    mapped_intervals = None # note, normally uses `utils.read_mapped_region_file`
+    data, windows, samples = _read_score_file(score_path, chr_names, tgt_samples)
+    sample_size = len(samples)
+
+    header = 'chrom\tstart\tend\tsample\tmatch_rate\tsrc_sample'
+    with open(matchrate_path, 'w') as f_out:
+        f_out.write(header+"\n")
+
+        for t in samples:
+
+            sample_out_lines = _cal_match_pct_ind(
+                data=data[t],
+                tgt_ind_index=tgt_samples.index(t),
+                mapped_intervals=mapped_intervals,
+                tgt_data=tgt_data,
+                src_data=src_data,
+                src_samples=src_samples,
+                sample_size=sample_size,
+            )
+
+            for line in sample_out_lines:
+                f_out.write(line + "\n")
+
+    return matchrate_path
