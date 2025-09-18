@@ -42,7 +42,7 @@ def _run_quantile(args):
     get_quantile(model=args.model, ms_dir=args.ms_dir, N0=args.N0, nsamp=args.nsamp, nreps=args.nreps, ref_index=args.ref_index, ref_size=args.ref_size, tgt_index=args.tgt_index, tgt_size=args.tgt_size, mut_rate=args.mut_rate, rec_rate=args.rec_rate, seq_len=args.seq_len, snp_num_range=args.snp_num_range, output_dir=args.output_dir, thread=args.thread, seeds=args.seeds)
 
 def _run_archaic_match_rate_pvalue(args):
-    from sstar.cal_match_rate import archaic_matchrate_pvalue
+    from sstar.matchrate_pvalue import archaic_matchrate_pvalue
 
     # TODO clean this up by making a class to organize Samples and Parameters
     archaic_matchrate_pvalue(
