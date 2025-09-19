@@ -7,7 +7,7 @@ import numpy as np
 from .simulate import MSPrimeSimulator
 from .cal_s_star import _cal_score_worker
 from .cal_match_rate import _cal_match_pct_ind, _read_score_file
-from .utils import read_data
+from .utils import read_data, filter_data
 
 def archaic_matchrate_pvalue(*,
                              demes_file: pathlib.Path,
@@ -81,8 +81,6 @@ def archaic_matchrate_pvalue(*,
     sim_matchrates = np.sort(sim_matchrates)
     num_matchrates = len(sim_matchrates)
 
-    #breakpoint()
-
     # Read observed match rates, calculate p-values, and write to output file
     out_path = output_dir / "observed_matchrate_pvalues.txt" # TODO change hardcoded name later
     with open(obs_matchrate_path, 'r') as f_in, open(out_path, 'w') as f_out:
@@ -131,6 +129,14 @@ def _run_sstar_score(vcf_path: pathlib.Path) -> pathlib.Path:
     # NOTE and collect the score results
 
     ref_data, ref_samples, tgt_data, tgt_samples, src_data, src_samples = read_data(str(vcf_path), ref_ind_file, tgt_ind_file, None, None)
+
+    chr_names = tgt_data.keys()
+    for c in chr_names:
+        # Remove variants observed in the reference populations
+        # Assume 1 is the alt allele
+        variants_not_in_ref = np.sum(ref_data[c]['GT'].is_hom_ref(),axis=1) == len(ref_samples)
+        tgt_data = filter_data(tgt_data, c, variants_not_in_ref)
+
     win_len = 50_000            # TODO set as parameter
     win_step = 10_000           # TODO set as parameter
     match_bonus = 5_000         # TODO set as parameter
