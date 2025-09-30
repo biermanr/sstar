@@ -215,7 +215,16 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
 
         # RB note: why are we doing a subprocess call instead of using the python API for sstar score?
         start = time.time()
-        subprocess.call(['sstar', 'score', '--vcf', output_vcf, '--ref', ref_list, '--tgt', tgt_list, '--output', output_score, '--win-len', str(seq_len), '--win-step', str(seq_len), '--thread', '1'])
+        subprocess.call([
+            'sstar', 'score',
+            '--vcf', output_vcf, 
+            '--ref', ref_list, 
+            '--tgt', tgt_list, 
+            '--output', output_score, 
+            '--win-len', str(seq_len), 
+            '--win-step', str(seq_len), 
+            '--thread', '1',
+        ])
         print("- score ms vcf took: ",time.time()-start, flush=True)
 
         start = time.time()

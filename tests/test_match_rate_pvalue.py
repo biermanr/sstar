@@ -8,6 +8,7 @@ def md5(fname: pathlib.Path):
     with open(fname, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
+@pytest.mark.integration
 def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
     output_dir = tmp_path
     num_sims = 2
