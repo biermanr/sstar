@@ -15,6 +15,7 @@
 
 import numpy as np
 import pandas as pd
+import warnings
 import rpy2.robjects as ro
 from rpy2.robjects import FloatVector, Formula, pandas2ri
 from rpy2.robjects.packages import importr
@@ -198,15 +199,24 @@ def _read_recomb_map(recomb_map_file):
         recomb_map_file str: Name of the file containing recombination maps.
 
     Returns:
-        recomb_map dict: Dictionary containing recombination maps.
+        recomb_map dict: Dictionary containing recombination maps such as {"chr1:0-1000": 0.5, "chr1:500-1500": 0.75, ...}
     """
     recomb_map = dict()
     with open(recomb_map_file, 'r') as f:
-        for line in f.readlines():
-            line = line.rstrip()
-            element = line.split("\t")
-            key = element[0]+":"+element[1]+"-"+element[2]
-            if key not in recomb_map.keys(): recomb_map[key] = float(element[3])
+        for line in f:
+            line = line.strip()
+            tokens = line.split("\t")
+            if len(tokens) != 4:
+                warnings.warn(f"Warning: Incorrect format in recombination map file {recomb_map_file}, check line: {line}", RuntimeWarning)
+                continue
+
+            chrom,start,end,rate = tokens
+            key = f"{chrom}:{start}-{end}"
+            if key not in recomb_map: 
+                recomb_map[key] = float(rate)
+
+    if not recomb_map:
+        warnings.warn(f"Warning: Recombination map is empty, check file {recomb_map_file}", RuntimeWarning)
 
     return recomb_map
 

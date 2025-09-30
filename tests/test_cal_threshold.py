@@ -16,7 +16,47 @@
 import pytest
 import pandas as pd
 import numpy as np
-from sstar.cal_threshold import cal_threshold
+from sstar.cal_threshold import cal_threshold, _read_recomb_map
+
+# WRITE SOME UNIT TESTS FOR cal_threshold!!!
+# MAYBE START WITH _read_recomb_map
+# AFTER I GET GOOD COVERAGE THEN ADD A FUNCTION FOR pyGAM AND TEST THAT AS A REPLACEMENT
+
+
+def test_read_recomb_map(tmp_path):
+
+    recomb_map = tmp_path / "recomb_map.txt"
+    with open(recomb_map, 'w') as f:
+        f.write("\t".join(["chr1",   "0", "1000", "0.5"]) + "\n")
+        f.write("\t".join(["chr1", "500", "1500", "0.75"]) + "\n")
+        f.write("\t".join(["chr1", "500", "1500", "0.85"]) + "\n")
+
+    recomb_dict = _read_recomb_map(recomb_map) 
+
+    assert len(recomb_dict) == 2
+    assert recomb_dict["chr1:0-1000"] == 0.5
+    assert recomb_dict["chr1:500-1500"] == 0.75
+
+def test_read_recomb_map_incorrect_format(tmp_path):
+
+    recomb_map = tmp_path / "recomb_map.txt"
+    with open(recomb_map, 'w') as f:
+        f.write("\t".join(["chr1",   "0", "1000"]) + "\n")
+        f.write("\t".join(["chr1", "500", "1500", "0.75"]) + "\n")
+
+    with pytest.warns(RuntimeWarning, match="Incorrect format"):
+        _read_recomb_map(recomb_map)
+
+def test_read_recomb_map_empty(tmp_path):
+
+    recomb_map = tmp_path / "recomb_map.txt"
+    with open(recomb_map, 'w') as f:
+        pass
+
+    with pytest.warns():
+        recomb_dict = _read_recomb_map(recomb_map) 
+
+    assert len(recomb_dict) == 0
 
 @pytest.mark.integration
 def test_cal_threshold(test_paths):
