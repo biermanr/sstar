@@ -16,7 +16,7 @@
 import pytest
 from sstar.get_quantile import get_quantile
 
-
+@pytest.mark.integration
 def test_get_quantile(test_paths):
     get_quantile(
         model=test_paths.model_file, 

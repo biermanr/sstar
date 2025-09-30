@@ -14,7 +14,9 @@
 # limitations under the License.
 
 from sstar.cal_s_star import cal_s_star
+import pytest
 
+@pytest.mark.integration
 def test_cal_s_star(test_paths, tmp_path):
     # Redirect output to a temporary file to avoid overwriting shared test data
     output_path = tmp_path / "cal_s_star_output.txt"
@@ -32,15 +34,15 @@ def test_cal_s_star(test_paths, tmp_path):
         mismatch_penalty=-10000
     )
     
-    with open(output_path, 'r') as f:
+    with open(output_path) as f:
         result = f.read()
     
-    with open(test_paths.expected_score_file, 'r') as f:
+    with open(test_paths.expected_score_file) as f:
         expected_result = f.read()
 
     assert result == expected_result
 
-
+@pytest.mark.integration
 def test_cal_s_star_multithread(test_paths, tmp_path):
     """Test that multithread execution produces the same results as single-thread execution."""
     single_output_path = tmp_path / "cal_s_star_single_thread.txt"
@@ -77,10 +79,10 @@ def test_cal_s_star_multithread(test_paths, tmp_path):
     )
         
     # Read results from both runs
-    with open(single_output_path, 'r') as f:
+    with open(single_output_path) as f:
         single_result = f.read()
     
-    with open(multi_output_path, 'r') as f:
+    with open(multi_output_path) as f:
         multi_result = f.read()
     
     # Results should be identical

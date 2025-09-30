@@ -16,7 +16,7 @@
 import pytest
 from sstar.get_tract import get_tract
 
-
+@pytest.mark.integration
 def test_get_tract(test_paths):
     # Test 1: Basic tract extraction without match percentage files
     get_tract(threshold_file=test_paths.threshold_file, match_pct_files=None, output_prefix=test_paths.tract_output_prefix, diff=0)

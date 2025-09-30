@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 from sstar.cal_threshold import cal_threshold
 
-
+@pytest.mark.integration
 def test_cal_threshold(test_paths):
     cal_threshold(
         simulated_data=test_paths.simulated_data_file, 
