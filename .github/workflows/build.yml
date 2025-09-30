@@ -19,10 +19,16 @@ jobs:
         environment-name: sstar-build
         environment-file: build-env.yml
 
-    - name: Test with pytest, coverage, and generate coverage reports
+    - name: Integration tests only with pytest, but don't generate coverage reports
       run: |
         export R_LIBS=${CONDA_PREFIX}/lib/R/library
-        micromamba run -n sstar-build coverage run -m pytest
+        micromamba run -n sstar-build coverage run -m pytest -m integration
+        micromamba run -n sstar-build coverage erase
+
+    - name: Unit tests only with pytest, coverage, and generate coverage reports
+      run: |
+        export R_LIBS=${CONDA_PREFIX}/lib/R/library
+        micromamba run -n sstar-build coverage run -m pytest -m "not integration"
         micromamba run -n sstar-build coverage combine
         micromamba run -n sstar-build coverage report -m
         micromamba run -n sstar-build coverage xml

@@ -22,6 +22,7 @@ import pandas as pd
 from multiprocessing import Process, Queue
 from scipy.stats import norm
 from scipy.stats import nbinom
+import time
 
 
 def get_quantile(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index, tgt_size, mut_rate, rec_rate, seq_len, snp_num_range, output_dir, thread, seeds):
@@ -50,9 +51,24 @@ def get_quantile(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index
     if seeds is not None: np.random.seed(np.sum(seeds))
     output_dir = os.path.abspath(output_dir)
     if os.path.exists(output_dir) is False: subprocess.call(['mkdir', output_dir])
+
+    print("Starting Generate_mut_rec_combination", flush=True)
+    start = time.time()
     _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir)
+    print(" - Generate_mut_rec_combination finished in: ",time.time()-start, flush=True)
+    print("", flush=True)
+
+    print("Starting Run ms simulation", flush=True)
+    start = time.time()
     _run_ms_simulation(model, ms_dir, N0, nsamp, nreps, ref_index, ref_size, tgt_index, tgt_size, seq_len, snp_num_range, output_dir, thread, seeds)
+    print(" - Run_ms_simulation: ",time.time()-start, flush=True)
+    print("", flush=True)
+
+    print("Starting run_summary", flush=True)
+    start = time.time()
     _summary(output_dir, rec_rate)
+    print(" - Run_summary: ",time.time()-start, flush=True)
+    print("", flush=True)
 
 
 def _generate_mut_rec_combination(N0, nreps, mut_rate, rec_rate, seq_len, output_dir):
@@ -188,12 +204,24 @@ def _run_ms_simulation_worker(in_queue, out_queue, output_dir, rates, ms_exec, n
         if os.path.exists(output_subdir) is False: subprocess.call(['mkdir', output_subdir])
         with open(ms_script, 'w') as o:
             o.write(cmd+"\n")
+
+        start = time.time()
         subprocess.call(['bash', ms_script])
+        print("- ms script took: ",time.time()-start, flush=True)
+
+        start = time.time()
         _ms2vcf(output_ms, output_vcf, nsamp, seq_len)
+        print("- ms2vcf took: ",time.time()-start, flush=True)
 
         # RB note: why are we doing a subprocess call instead of using the python API for sstar score?
+        start = time.time()
         subprocess.call(['sstar', 'score', '--vcf', output_vcf, '--ref', ref_list, '--tgt', tgt_list, '--output', output_score, '--win-len', str(seq_len), '--win-step', str(seq_len), '--thread', '1'])
+        print("- score ms vcf took: ",time.time()-start, flush=True)
+
+        start = time.time()
         _cal_quantile(output_score, output_quantile, snp_num)
+        print("- cal quantile took: ",time.time()-start, flush=True)
+
         out_queue.put('Finished')
 
 

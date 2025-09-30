@@ -17,7 +17,7 @@ import pytest
 from sstar.cal_match_rate import cal_match_pct
 from sstar.utils import read_data
 
-
+@pytest.mark.integration
 def test_cal_match_pct(test_paths):
     cal_match_pct(
         test_paths.match_rate_vcf_file, 
