@@ -15,6 +15,10 @@ def test_run_archaic_match_rate_pvalue(test_paths, tmp_path):
     output_dir = tmp_path
     num_sims = 2
 
+    # Set random seed for reproducibility
+    import random
+    random.seed(42)
+
 
     # NOTE not sure I set the correct ref/tgt/src populations here
     match_rate_pvalue.archaic_matchrate_pvalue(
