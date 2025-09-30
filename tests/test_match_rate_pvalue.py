@@ -3,6 +3,8 @@ import pathlib
 import hashlib
 import collections
 
+import pytest
+
 def md5(fname: pathlib.Path):
     """Calculate the MD5 checksum of a file."""
     with open(fname, "rb") as f:
